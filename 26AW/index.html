@@ -76,9 +76,9 @@ input:focus,select:focus,textarea:focus,button:focus-visible,summary:focus-visib
 .tabs button.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 .subh{display:flex;align-items:baseline;gap:8px;margin:10px 0 -6px;padding-bottom:6px;border-bottom:2px solid var(--fg)}
 .subh span{color:var(--mute);font-size:13px}
-.prod{display:grid;grid-template-columns:96px 1fr;gap:14px;align-items:start}
-.pimg{aspect-ratio:4/5;width:100%;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:11px;font-weight:700;overflow:hidden;text-align:center;padding:4px}
-.pimg img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+.prod{display:grid;grid-template-columns:168px 1fr;gap:14px;align-items:start}
+.pimg{aspect-ratio:4/3;width:100%;border-radius:8px;background:#fff;border:1px solid var(--line);color:#8a90a0;display:grid;place-items:center;font-size:12px;overflow:hidden;text-align:center}
+.pimg img{width:100%;height:100%;object-fit:contain;display:block;cursor:zoom-in}
 .meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
 .tag{font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-variant-numeric:tabular-nums}
 .tag.g{background:var(--fg);color:var(--bg)}
@@ -90,7 +90,9 @@ details.more>summary{cursor:pointer;font-size:13px;color:var(--accent);font-weig
 details.more>summary::before{content:"+ "}
 details.more[open]>summary::before{content:"− "}
 details.more .inner{display:grid;gap:10px;padding-top:6px}
-@media (max-width:420px){.prod{grid-template-columns:84px 1fr}.attr{grid-template-columns:1fr;gap:4px}}
+@media (max-width:480px){.prod{grid-template-columns:132px 1fr}.attr{grid-template-columns:1fr;gap:4px}}
+@media (max-width:360px){.prod{grid-template-columns:1fr}}
+nav.steps button:disabled{opacity:.45;cursor:not-allowed}
 .notice{border:1px dashed var(--line);border-radius:10px;padding:18px;color:var(--mute);text-align:center;font-size:14px}
 .banner{background:var(--accent-soft);color:var(--fg);border-radius:8px;padding:10px 14px;font-size:13px;margin-top:6px}
 .comp{display:grid;gap:10px;border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--card)}
@@ -157,7 +159,7 @@ function stepStore(){
 ${q('① 채널형태',select('sel_type',types,s.type,'선택해 주세요'),'',1)}
 ${q('② 채널계열',select('sel_group',groups,s.group,s.type?'선택해 주세요':'먼저 채널형태를 선택하세요',!s.type),'',1)}
 ${q('③ 매장명',select('sel_name',names,s.name,s.group?'선택해 주세요':'먼저 채널계열을 선택하세요',!s.group),'',1)}
-${q('작성자',txt('store.writer','성함 또는 직책 (선택)'))}</div>`}
+${s.name?'':'<div class="sub">매장을 선택해야 다음 단계로 넘어갈 수 있습니다.</div>'}</div>`}
 function stepSeason(){return `<h2>시즌 전반에 대한 의견</h2><div class="card">
 ${q('이번 시즌 전체 만족도',rate('season.overall'),'',1)}
 ${q('상품 구성(복종·스타일 균형)',rate('season.assort',1))}
@@ -166,18 +168,16 @@ ${q('고객 반응(문의·시착·구매)',rate('season.cust',1))}
 ${q('잘 된 점',area('season.good','고객 반응이 좋았던 상품, 스타일, 시기 등'))}
 ${q('아쉬운 점·개선 요청',area('season.bad','부족했던 상품, 물량, 가격, 입고 시기 등'))}
 ${q('기타 의견',area('season.free'))}</div>`}
-function prodCard(p){const b='products.'+p.no,v=st.products[p.no]||{},open=(v.color||v.design||v.detail||v.price)?' open':'';return `<div class="card"><div class="prod">
-<div class="pimg">${p.img?`<img src="${esc(p.img)}" alt="${esc(p.name)}" loading="lazy" data-zoom="${esc(p.img)}">`:'이미지<br>준비중'}</div>
+function prodCard(p){const b='products.'+p.no;return `<div class="card"><div class="prod">
+<div class="pimg">${p.img?`<img src="${esc(p.img)}" alt="${esc(p.name)}" loading="lazy" data-zoom="${esc(p.img)}">`:'이미지 준비중'}</div>
 <div><h3>${esc(p.name)}</h3><div class="sub">${esc(p.no)}</div><div class="meta"><span class="tag">${won(p.price)}</span>${p.grade?`<span class="tag g">${esc(p.grade)}등급</span>`:''}</div><div class="meta">${p.colors.map(c=>`<span class="tag c">${esc(c)}</span>`).join('')}</div></div>
-<div class="attrs"><div class="attr"><span>종합 점수</span>${rate(b+'.score',1)}</div>
-<details class="more"${open}><summary>컬러·디자인·디테일·가격 평가</summary><div class="inner">
-<div class="attr"><span>컬러</span>${rate(b+'.color',1)}</div><div class="attr"><span>디자인</span>${rate(b+'.design',1)}</div>
-<div class="attr"><span>디테일</span>${rate(b+'.detail',1)}</div><div class="attr"><span>가격</span>${rate(b+'.price',1)}</div></div></details>
-${txt(b+'.comment','한 줄 의견 (고객 반응, 수정 요청 등)')}</div></div></div>`}
+<div class="attrs"><div class="attr"><span>디자인</span>${rate(b+'.design',1)}</div>
+<div class="attr"><span>가격</span>${rate(b+'.price',1)}</div>
+${txt(b+'.comment','한줄평 (고객 반응, 컬러 의견, 수정 요청 등)')}</div></div></div>`}
 function stepProducts(){
-  const tabs=CATS.map(c=>{const l=P.items.filter(p=>p.cat===c.k),d=l.filter(p=>(st.products[p.no]||{}).score).length;return `<button type="button" data-cat="${c.k}" class="${ui.cat===c.k?'on':''}">${c.n} <span style="opacity:.75">${d}/${l.length}</span></button>`}).join('');
+  const tabs=CATS.map(c=>{const l=P.items.filter(p=>p.cat===c.k),d=l.filter(p=>{const v=st.products[p.no]||{};return v.design||v.price||v.comment}).length;return `<button type="button" data-cat="${c.k}" class="${ui.cat===c.k?'on':''}">${c.n} <span style="opacity:.75">${d}/${l.length}</span></button>`}).join('');
   const list=P.items.filter(p=>p.cat===ui.cat),subs=uniq(list.map(p=>p.sub));
-  return `<h2>상품별 평가</h2><div class="sub">출고된 ${esc(CFG.season)} 상품입니다. 1점(아쉬움) ~ 5점(매우 좋음). 종합 점수만 입력해도 되고, 모르는 상품은 건너뛰세요.</div><div class="tabs">${tabs}</div>`+
+  return `<h2>상품별 평가</h2><div class="sub">출고된 ${esc(CFG.season)} 상품입니다. 디자인·가격을 1점(아쉬움) ~ 5점(매우 좋음)으로 평가해 주세요. 모르는 상품은 건너뛰어도 됩니다.</div><div class="tabs">${tabs}</div>`+
   subs.map(sb=>{const l=list.filter(p=>p.sub===sb);return `<div class="subh"><h3>${esc(sb)}</h3><span>${l.length}개</span></div>`+l.map(prodCard).join('')}).join('')+
   (list.length?`<div class="nav"><span></span>${CATS.findIndex(c=>c.k===ui.cat)<2?`<button type="button" class="btn pri" data-nextcat="1">다음 복종</button>`:`<button type="button" class="btn pri" data-go="1">다음 단계</button>`}</div>`:'<div class="notice">상품이 없습니다.</div>')}
 function stepPrices(){return `<h2>가격 적정선</h2><div class="sub">고객 반응과 경쟁브랜드 가격을 기준으로, 복종별로 어느 선이 적당한지 적어 주세요.</div>`+CATS.map(c=>{const b='prices.'+c.k;return `<div class="card"><h3>${c.n}</h3>
@@ -208,33 +208,32 @@ ${miss.length?`<div class="err">필수 항목을 입력해 주세요: ${miss.joi
 <div id="subErr" class="err"></div>
 <button type="button" class="btn pri" data-submit="1" ${miss.length||ui.busy?'disabled':''}>${ui.busy?'제출 중...':'제출하기'}</button></div>`}
 const RENDER=[stepStore,stepSeason,stepProducts,stepPrices,stepComps,stepSubmit];
-function stepDone(i){const s=st;return [!!s.store.name,!!s.season.overall,Object.values(s.products).some(x=>x.score),CATS.some(c=>s.prices[c.k]&&(s.prices[c.k].min||s.prices[c.k].vsComp)),s.comps.some(c=>c.brand),!!ui.sent][i]}
+function stepDone(i){const s=st;return [!!s.store.name,!!s.season.overall,Object.values(s.products).some(x=>x.design||x.price||x.comment),CATS.some(c=>s.prices[c.k]&&(s.prices[c.k].min||s.prices[c.k].vsComp)),s.comps.some(c=>c.brand),!!ui.sent][i]}
 
 function build(){
-  const rows=[];P.items.forEach(p=>{const v=st.products[p.no];if(v&&(v.score||v.color||v.design||v.detail||v.price||v.comment))rows.push({no:p.no,name:p.name,cat:p.cat,sub:p.sub,price:p.price,grade:p.grade||'',score:v.score||null,color:v.color||null,design:v.design||null,detail:v.detail||null,price_score:v.price||null,comment:v.comment||''})});
+  const rows=[];P.items.forEach(p=>{const v=st.products[p.no];if(v&&(v.design||v.price||v.comment))rows.push({no:p.no,name:p.name,cat:p.cat,sub:p.sub,price:p.price,grade:p.grade||'',design:v.design||null,price_score:v.price||null,comment:v.comment||''})});
   return{sid:st.sid,season:CFG.season,at:new Date().toISOString(),store:st.store,seasonQ:st.season,products:rows,prices:st.prices,comps:st.comps.filter(c=>Object.values(c).some(Boolean)),extra:st.extra||'',hp:$('#hp').value}
 }
 
 function render(){
-  const nav=`<nav class="steps">${STEPS.map((s,i)=>`<button type="button" data-step="${i}" class="${ui.step===i?'on':''} ${stepDone(i)?'done':''}">${s}</button>`).join('')}</nav><div class="bar"><i style="width:${Math.round((ui.step+1)/STEPS.length*100)}%"></i></div>`;
+  const nav=`<nav class="steps">${STEPS.map((s,i)=>`<button type="button" data-step="${i}" ${i>0&&!st.store.name?'disabled':''} class="${ui.step===i?'on':''} ${stepDone(i)?'done':''}">${s}</button>`).join('')}</nav><div class="bar"><i style="width:${Math.round((ui.step+1)/STEPS.length*100)}%"></i></div>`;
   const nextBtn=ui.step<STEPS.length-1&&ui.step!==2;
-  $('#root').innerHTML=nav+`<section class="pane">${RENDER[ui.step]()}<div class="nav"><button type="button" class="btn" data-go="-1" ${ui.step?'':'disabled'}>이전</button>${nextBtn?`<button type="button" class="btn pri" data-go="1">다음</button>`:'<span></span>'}</div></section>`;
+  $('#root').innerHTML=nav+`<section class="pane">${RENDER[ui.step]()}<div class="nav"><button type="button" class="btn" data-go="-1" ${ui.step?'':'disabled'}>이전</button>${nextBtn?`<button type="button" class="btn pri" data-go="1" ${st.store.name?'':'disabled'}>다음</button>`:'<span></span>'}</div></section>`;
 }
-
 /* ---------- events ---------- */
 document.addEventListener('input',e=>{const p=e.target.dataset&&e.target.dataset.p;if(p)setp(p,e.target.type==='number'&&e.target.value!==''?Number(e.target.value):e.target.value)});
 document.addEventListener('change',e=>{
   const id=e.target.id,v=e.target.value;
-  if(id==='sel_type'){st.store={writer:st.store.writer,type:v};save();render()}
-  if(id==='sel_group'){st.store={writer:st.store.writer,type:st.store.type,group:v};save();render()}
+  if(id==='sel_type'){st.store={type:v};save();render()}
+  if(id==='sel_group'){st.store={type:st.store.type,group:v};save();render()}
   if(id==='sel_name'){st.store.name=v;save();render()}
 });
 document.addEventListener('click',async e=>{
   const z=e.target.closest('[data-zoom]');if(z){const d=document.createElement('div');d.className='lb';d.innerHTML=`<img src="${esc(z.dataset.zoom)}" alt="">`;d.onclick=()=>d.remove();document.body.appendChild(d);return}
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
   if(d.r){const cur=getp(d.r),val=/^\d$/.test(d.v)?+d.v:d.v,nv=cur===val?undefined:val;setp(d.r,nv);b.parentElement.querySelectorAll('button').forEach(x=>x.classList.toggle('on',nv!==undefined&&x===b));return}
-  if(d.step!==undefined){ui.step=+d.step;render();scrollTo(0,0);return}
-  if(d.go){ui.step=Math.max(0,Math.min(STEPS.length-1,ui.step+ +d.go));render();scrollTo(0,0);return}
+  if(d.step!==undefined){if(+d.step>0&&!st.store.name){toast('매장을 먼저 선택해 주세요');return}ui.step=+d.step;render();scrollTo(0,0);return}
+  if(d.go){if(+d.go>0&&!st.store.name){toast('매장을 먼저 선택해 주세요');return}ui.step=Math.max(0,Math.min(STEPS.length-1,ui.step+ +d.go));render();scrollTo(0,0);return}
   if(d.cat){ui.cat=d.cat;render();return}
   if(d.nextcat){ui.cat=CATS[CATS.findIndex(c=>c.k===ui.cat)+1].k;render();scrollTo(0,0);return}
   if(d.addcomp){st.comps.push({});save();render();return}
@@ -268,7 +267,9 @@ $('#ttl').textContent=CFG.title||'상품 반응도 조사';
 $('#lead').textContent=(CFG.deadline?CFG.deadline+' · ':'')+(CFG.lead||'');
 if(!CFG.endpoint)$('#testbanner').hidden=false;
 Promise.all([fetch('data/stores.json').then(r=>r.json()),fetch('data/products.json').then(r=>r.json())])
- .then(([s,p])=>{stores=s;P=p;if(P.season&&CFG.season&&P.season!==CFG.season)console.warn('시즌 불일치');render()})
+ .then(([s,p])=>{stores=s;P=p;if(P.season&&CFG.season&&P.season!==CFG.season)console.warn('시즌 불일치');
+   if(st.store.name&&!stores.some(x=>x.name===st.store.name))st.store={};   // 저장된 임시값의 매장이 목록에서 빠진 경우
+   render()})
  .catch(()=>{$('#root').innerHTML='<div class="notice">데이터를 불러오지 못했습니다. 새로고침해 주세요.</div>'});
 })();
 </script>
