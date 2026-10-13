@@ -152,3 +152,12 @@ function setup() {
   SpreadsheetApp.getUi().alert('설정 완료. 이제 [배포 > 새 배포 > 웹 앱] 으로 URL 을 만드세요.');
 }
 function fresh_(ss, name) { const old = ss.getSheetByName(name); if (old) ss.deleteSheet(old); return ss.insertSheet(name); }
+
+/** 수동 실행 전용: 응답 raw 탭 5개의 데이터 행을 모두 비웁니다(헤더 유지). 테스트 응답 정리용 — 실제 응답이 쌓인 뒤에는 실행하지 마세요. */
+function clearAllResponses() {
+  const ss = SpreadsheetApp.getActive();
+  Object.keys(HEADERS).forEach(n => {
+    const sh = ss.getSheetByName(n), last = sh ? sh.getLastRow() : 0;
+    if (last > 1) sh.getRange(2, 1, last - 1, sh.getLastColumn()).clearContent();
+  });
+}
