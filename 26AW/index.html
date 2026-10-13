@@ -127,7 +127,7 @@ const CATS=[{k:'가방',n:'가방'},{k:'의류',n:'의류'},{k:'모자',n:'모�
 const LAB=['아쉬움','부족','보통','좋음','매우 좋음'];
 // 가격 적정선을 받을 주요 복종 / 경쟁브랜드를 받을 구분
 const PSUBS={'가방':['토트백','크로스백','백팩'],'의류':['긴소매티셔츠','라운드티셔츠','집업','바지','자켓','후드티셔츠','셔츠','니트'],'모자':['벙거지','야구모자']};
-const CGROUPS=['의류','모자'];
+const CGROUPS=['의류','가방'];
 const STEPS=['매장 선택','시즌 전반','상품별 평가','가격 적정선','경쟁브랜드','제출'];
 const DKEY='store-survey-draft-'+(CFG.season||'');
 const $=s=>document.querySelector(s);
@@ -163,7 +163,7 @@ ${q('① 채널형태',select('sel_type',types,s.type,'선택해 주세요'),'',
 ${q('② 채널계열',select('sel_group',groups,s.group,s.type?'선택해 주세요':'먼저 채널형태를 선택하세요',!s.type),'',1)}
 ${q('③ 매장명',select('sel_name',names,s.name,s.group?'선택해 주세요':'먼저 채널계열을 선택하세요',!s.group),'',1)}
 ${s.name?'':'<div class="sub">매장을 선택해야 다음 단계로 넘어갈 수 있습니다.</div>'}</div>`}
-function stepSeason(){return `<h2>시즌 전반에 대한 의견</h2><div class="card">
+function stepSeason(){return `<h2>시즌 전반에 대한 의견</h2><div class="sub">전년(25AW)을 기준점(3점)으로 평가해주세요.</div><div class="card">
 ${q('이번 시즌 전체 만족도',rate('season.overall'),'',1)}
 ${q('상품 구성(복종·스타일 균형)',rate('season.assort',1))}
 ${q('물량·입고 시기',rate('season.timing',1))}
@@ -189,7 +189,7 @@ function stepPrices(){return `<h2>가격 적정선</h2><div class="sub">주요 �
 ${q('우리 상품 가격 수준',opts(b+'.vsCur',['낮은 편','적정','높은 편']))}
 ${q('경쟁브랜드 대비',opts(b+'.vsComp',['저렴','비슷','비쌈']))}
 ${txt(b+'.note','의견 (경쟁브랜드 가격, 고객 반응 등)')}</div>`}).join('')).join('')}
-function stepComps(){return `<h2>경쟁브랜드 현황</h2><div class="sub">대표 경쟁브랜드로 생각되는 곳을 의류/모자 각 두 군데씩만 기재해 주세요.</div>`+
+function stepComps(){return `<h2>경쟁브랜드 현황</h2><div class="sub">대표 경쟁브랜드로 생각되는 곳을 의류/가방 각 두 군데씩만 기재해 주세요.</div>`+
 CGROUPS.map(g=>`<div class="subh"><h3>${g}</h3></div>`+[0,1].map(i=>{const b='comps.'+g+'.'+i;return `<div class="card"><h3>${g} 경쟁브랜드 ${i+1}</h3>
 ${q('브랜드명',txt(b+'.brand'))}
 <div class="row2">${q('가격대',txt(b+'.range','예: 6~12만원'))}${q('강점',txt(b+'.strength','고객이 선호하는 이유'))}</div>
