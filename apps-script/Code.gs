@@ -79,30 +79,30 @@ function setup() {
   sh.getRange('A1').setValue('복종별 취합 (최신 제출 기준)').setFontSize(14).setFontWeight('bold');
   sh.getRange('A3:G3').setValues([['복종', '응답매장수', '평가건수', '디자인', '가격', '적정가 하한(중앙값)', '적정가 상한(중앙값)']]).setFontWeight('bold').setBackground(HB);
   CATS.forEach((k, i) => {
-    const r = 4 + i, f = col => `=IFERROR(AVERAGEIFS(상품평가!${col}${R},상품평가!$G${R},$A${r},상품평가!$B${R},"Y"),"")`;
-    sh.getRange(r, 1, 1, 7).setFormulas([[k,
-      `=IFERROR(COUNTA(UNIQUE(FILTER(상품평가!$F${R},상품평가!$G${R}=$A${r},상품평가!$B${R}="Y"))),0)`,
-      `=COUNTIFS(상품평가!$G${R},$A${r},상품평가!$B${R},"Y")`, f('M'), f('N'),
-      `=IFERROR(MEDIAN(FILTER(가격적정선!$I${R},가격적정선!$G${R}=$A${r},가격적정선!$B${R}="Y",ISNUMBER(가격적정선!$I${R}))),"")`,
-      `=IFERROR(MEDIAN(FILTER(가격적정선!$J${R},가격적정선!$G${R}=$A${r},가격적정선!$B${R}="Y",ISNUMBER(가격적정선!$J${R}))),"")`]]);
+    const r = 4 + i, f = col => `=IFERROR(AVERAGEIFS(상품평가!${col}$2:${col}$20000,상품평가!$G$2:$G$20000,$A${r},상품평가!$B$2:$B$20000,"Y"),"")`;
+    sh.getRange(r, 1, 1, 7).setFormulas([['="'+k+'"',
+      `=IFERROR(COUNTA(UNIQUE(FILTER(상품평가!$F$2:$F$20000,상품평가!$G$2:$G$20000=$A${r},상품평가!$B$2:$B$20000="Y"))),0)`,
+      `=COUNTIFS(상품평가!$G$2:$G$20000,$A${r},상품평가!$B$2:$B$20000,"Y")`, f('M'), f('N'),
+      `=IFERROR(MEDIAN(FILTER(가격적정선!$I$2:$I$20000,가격적정선!$G$2:$G$20000=$A${r},가격적정선!$B$2:$B$20000="Y",ISNUMBER(가격적정선!$I$2:$I$20000))),"")`,
+      `=IFERROR(MEDIAN(FILTER(가격적정선!$J$2:$J$20000,가격적정선!$G$2:$G$20000=$A${r},가격적정선!$B$2:$B$20000="Y",ISNUMBER(가격적정선!$J$2:$J$20000))),"")`]]);
   });
   sh.getRange('D4:E6').setNumberFormat('0.00'); sh.getRange('F4:G6').setNumberFormat('#,##0');
   sh.getRange('A9:C9').setValues([['복종', '경쟁브랜드 대비', '우리 가격 수준']]).setFontWeight('bold').setBackground(HB);
   CATS.forEach((k, i) => {
-    const r = 10 + i, n = (col, v) => `COUNTIFS(가격적정선!$G${R},$A${r},가격적정선!$B${R},"Y",가격적정선!${col}${R},"${v}")`;
-    sh.getRange(r, 1, 1, 3).setFormulas([[k,
+    const r = 10 + i, n = (col, v) => `COUNTIFS(가격적정선!$G$2:$G$20000,$A${r},가격적정선!$B$2:$B$20000,"Y",가격적정선!${col}$2:${col}$20000,"${v}")`;
+    sh.getRange(r, 1, 1, 3).setFormulas([['="'+k+'"',
       `="저렴 "&${n('L', '저렴')}&" · 비슷 "&${n('L', '비슷')}&" · 비쌈 "&${n('L', '비쌈')}`,
       `="낮은 편 "&${n('K', '낮은 편')}&" · 적정 "&${n('K', '적정')}&" · 높은 편 "&${n('K', '높은 편')}`]]);
   });
   sh.getRange('A14:B14').setValues([['복종', '상품 한줄평 모음 (매장 · 상품: 한줄평)']]).setFontWeight('bold').setBackground(HB);
   CATS.forEach((k, i) => {
     const r = 15 + i;
-    sh.getRange(r, 1, 1, 2).setFormulas([[k, `=IFERROR(TEXTJOIN(CHAR(10),TRUE,FILTER(상품평가!$F${R}&" · "&상품평가!$J${R}&": "&상품평가!$O${R},상품평가!$G${R}=$A${r},상품평가!$B${R}="Y",상품평가!$O${R}<>"")),"")`]]);
+    sh.getRange(r, 1, 1, 2).setFormulas([['="'+k+'"', `=IFERROR(TEXTJOIN(CHAR(10),TRUE,FILTER(상품평가!$F$2:$F$20000&" · "&상품평가!$J$2:$J$20000&": "&상품평가!$O$2:$O$20000,상품평가!$G$2:$G$20000=$A${r},상품평가!$B$2:$B$20000="Y",상품평가!$O$2:$O$20000<>"")),"")`]]);
   });
   sh.getRange('A19:B19').setValues([['복종', '가격 의견 모음 (매장: 의견)']]).setFontWeight('bold').setBackground(HB);
   CATS.forEach((k, i) => {
     const r = 20 + i;
-    sh.getRange(r, 1, 1, 2).setFormulas([[k, `=IFERROR(TEXTJOIN(CHAR(10),TRUE,FILTER(가격적정선!$F${R}&" · "&가격적정선!$H${R}&": "&가격적정선!$M${R},가격적정선!$G${R}=$A${r},가격적정선!$B${R}="Y",가격적정선!$M${R}<>"")),"")`]]);
+    sh.getRange(r, 1, 1, 2).setFormulas([['="'+k+'"', `=IFERROR(TEXTJOIN(CHAR(10),TRUE,FILTER(가격적정선!$F$2:$F$20000&" · "&가격적정선!$H$2:$H$20000&": "&가격적정선!$M$2:$M$20000,가격적정선!$G$2:$G$20000=$A${r},가격적정선!$B$2:$B$20000="Y",가격적정선!$M$2:$M$20000<>"")),"")`]]);
   });
   sh.getRange('B15:B22').setWrap(true).setVerticalAlignment('top');
   sh.setColumnWidth(1, 80); sh.setColumnWidth(2, 520);
@@ -111,14 +111,14 @@ function setup() {
   sh = fresh_(ss, '가격적정선취합');
   sh.getRange('A1:H1').setValues([['복종', '세부복종', '응답수', '적정 하한(중앙값)', '적정 상한(중앙값)', '현재가 수준', '경쟁브랜드 대비', '의견 모음']]).setFontWeight('bold').setBackground(HB);
   PRICE_SUBS.forEach((p, i) => {
-    const r = 2 + i, cond = `가격적정선!$H${R}=$B${r},가격적정선!$B${R}="Y"`, n = (col, v) => `COUNTIFS(가격적정선!$H${R},$B${r},가격적정선!$B${R},"Y",가격적정선!${col}${R},"${v}")`;
-    sh.getRange(r, 1, 1, 8).setFormulas([[p[0], p[1],
-      `=COUNTIFS(가격적정선!$H${R},$B${r},가격적정선!$B${R},"Y")`,
-      `=IFERROR(MEDIAN(FILTER(가격적정선!$I${R},${cond},ISNUMBER(가격적정선!$I${R}))),"")`,
-      `=IFERROR(MEDIAN(FILTER(가격적정선!$J${R},${cond},ISNUMBER(가격적정선!$J${R}))),"")`,
+    const r = 2 + i, cond = `가격적정선!$H$2:$H$20000=$B${r},가격적정선!$B$2:$B$20000="Y"`, n = (col, v) => `COUNTIFS(가격적정선!$H$2:$H$20000,$B${r},가격적정선!$B$2:$B$20000,"Y",가격적정선!${col}$2:${col}$20000,"${v}")`;
+    sh.getRange(r, 1, 1, 8).setFormulas([['="'+p[0]+'"', '="'+p[1]+'"',
+      `=COUNTIFS(가격적정선!$H$2:$H$20000,$B${r},가격적정선!$B$2:$B$20000,"Y")`,
+      `=IFERROR(MEDIAN(FILTER(가격적정선!$I$2:$I$20000,${cond},ISNUMBER(가격적정선!$I$2:$I$20000))),"")`,
+      `=IFERROR(MEDIAN(FILTER(가격적정선!$J$2:$J$20000,${cond},ISNUMBER(가격적정선!$J$2:$J$20000))),"")`,
       `="낮은 편 "&${n('K', '낮은 편')}&" · 적정 "&${n('K', '적정')}&" · 높은 편 "&${n('K', '높은 편')}`,
       `="저렴 "&${n('L', '저렴')}&" · 비슷 "&${n('L', '비슷')}&" · 비쌈 "&${n('L', '비쌈')}`,
-      `=IFERROR(TEXTJOIN(CHAR(10),TRUE,FILTER(가격적정선!$F${R}&": "&가격적정선!$M${R},${cond},가격적정선!$M${R}<>"")),"")`]]);
+      `=IFERROR(TEXTJOIN(CHAR(10),TRUE,FILTER(가격적정선!$F$2:$F$20000&": "&가격적정선!$M$2:$M$20000,${cond},가격적정선!$M$2:$M$20000<>"")),"")`]]);
   });
   sh.getRange(2, 4, PRICE_SUBS.length, 2).setNumberFormat('#,##0'); sh.getRange(2, 8, PRICE_SUBS.length, 1).setWrap(true).setVerticalAlignment('top');
   sh.setColumnWidth(6, 200); sh.setColumnWidth(7, 200); sh.setColumnWidth(8, 420); sh.setFrozenRows(1);
@@ -137,8 +137,8 @@ function setup() {
   if (typeof STORE_LIST !== 'undefined') {
     sh.getRange(2, 1, STORE_LIST.length, 3).setValues(STORE_LIST);
     const f = STORE_LIST.map((_, i) => [
-      `=IF(COUNTIFS(시즌응답!$G${R},C${i + 2},시즌응답!$B${R},"Y")>0,"제출","미제출")`,
-      `=IFERROR(AVERAGEIFS(시즌응답!$H${R},시즌응답!$G${R},C${i + 2},시즌응답!$B${R},"Y"),"")`]);
+      `=IF(COUNTIFS(시즌응답!$G$2:$G$20000,C${i + 2},시즌응답!$B$2:$B$20000,"Y")>0,"제출","미제출")`,
+      `=IFERROR(AVERAGEIFS(시즌응답!$H$2:$H$20000,시즌응답!$G$2:$G$20000,C${i + 2},시즌응답!$B$2:$B$20000,"Y"),"")`]);
     sh.getRange(2, 4, f.length, 2).setFormulas(f);
     sh.getRange('G1').setFormula(`=COUNTIF(D2:D${STORE_LIST.length + 1},"제출")&" / ${STORE_LIST.length} 매장 제출"`);
   }
