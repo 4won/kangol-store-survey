@@ -28,8 +28,11 @@ for (const r of readJson(join(HUB, 'data/summary/product-info.json')))
 
 // 3) 출고된 상품만: 색상 중 하나라도 출고완료. 목록에는 출고된 색상만 표시
 rmSync(join(OUT, 'img'), { recursive: true, force: true }); mkdirSync(join(OUT, 'img'), { recursive: true });
+// 설문 제외 대상: 상품명이 MADSAKI 로 시작 / 지정 품번
+const EXCLUDE_NAME = /^madsaki/i, EXCLUDE_NO = new Set(['K5502', 'K5504']);
 const items = [];
 for (const p of pm.products) {
+  if (EXCLUDE_NAME.test(String(p.item_name).trim()) || EXCLUDE_NO.has(p.product_no)) continue;
   const shipped = (p.colors_agg || []).filter(c => c.ship_status === '출고완료');
   if (!shipped.length) continue;
   const code = (codeOf[p.product_no] || []).find(c => have.has(c));
