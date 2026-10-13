@@ -21,7 +21,6 @@ const CATS = ['가방', '의류', '모자'];
 const PSUBS = { '가방': ['토트백', '크로스백', '백팩'], '의류': ['긴소매티셔츠', '라운드티셔츠', '집업', '바지', '자켓', '후드티셔츠', '셔츠', '니트'], '모자': ['벙거지', '야구모자'] };
 const CHANNELS = ['백화점', '아울렛', '쇼핑몰'];
 const chLabel = ch => (ch === '쇼핑몰' ? '복합쇼핑몰' : ch);
-const RATE_UP = 1.1;                              // 4분면 판매율 기준 = 중앙값 × 1.1
 
 /* ---------- 읽기 ---------- */
 function parseCsv(t) {
@@ -238,41 +237,38 @@ const scoreRows = groups => groups.flatMap(g => [
 ]);
 // 4분면 분류 (종합점수 3.0 / 판매율 복종 중앙값)
 const QDEF = [
-  { k: 'HH', h: '점수 ↑ · 판매율 ↑', col: C.good },
-  { k: 'HL', h: '점수 ↑ · 판매율 ↓', col: C.brass },
-  { k: 'LH', h: '점수 ↓ · 판매율 ↑', col: C.steel },
-  { k: 'LL', h: '점수 ↓ · 판매율 ↓', col: C.low },
+  { k: 'HH', h: '디자인 ↑ · 가격 ↑', col: C.good },
+  { k: 'HL', h: '디자인 ↑ · 가격 ↓', col: C.brass },
+  { k: 'LH', h: '디자인 ↓ · 가격 ↑', col: C.steel },
+  { k: 'LL', h: '디자인 ↓ · 가격 ↓', col: C.low },
 ];
+// 4분면: 가로 = 디자인 점수, 세로 = 가격 점수 (기준 3.0). 키 첫 글자 = 디자인, 둘째 글자 = 가격
+const qscore = (k, p) => { const d = p.design - WARN, q = p.pscore - WARN; return k === 'HH' ? d + q : k === 'HL' ? d - q : k === 'LH' ? -d + q : -d - q; };
 function quadrants(cat) {
-  const all = products.filter(p => !cat || p.cat === cat), medRate = med(all.map(p => p.rate)), cut0 = medRate * RATE_UP;
-  const rated = all.filter(p => p.n > 0 && p.comp != null && p.rate != null);
-  const rr = p => (cut0 ? (p.rate - cut0) / cut0 : 0), ss = p => (p.comp - WARN) / 2;
-  const key = { HH: p => ss(p) + rr(p), HL: p => ss(p) - rr(p), LH: p => -ss(p) + rr(p), LL: p => -ss(p) - rr(p) };
-  const cut = medRate * RATE_UP, out = { medRate, cut, rated, q: {} };
-  for (const d of QDEF) out.q[d.k] = rated.filter(p => (d.k[0] === 'H') === (p.comp >= WARN) && (d.k[1] === 'H') === (p.rate >= cut)).sort((a, b) => key[d.k](b) - key[d.k](a));
+  const all = products.filter(p => !cat || p.cat === cat);
+  const rated = all.filter(p => p.n > 0 && p.design != null && p.pscore != null);
+  const out = { rated, q: {} };
+  for (const d of QDEF) out.q[d.k] = rated.filter(p => (d.k[0] === 'H') === (p.design >= WARN) && (d.k[1] === 'H') === (p.pscore >= WARN)).sort((a, b) => qscore(d.k, b) - qscore(d.k, a));
   return out;
 }
 function itemRow(p, showCat) {
   const cm = p.comments[0] ? clip(p.comments[0].text, 34) : '';
-  return `<div class="it"><div class="th">${thumb(p)}</div><div class="tx"><b>${esc(p.name)}</b><span>${showCat ? `<u style="background:${catColor[p.cat]}"></u>` : ''}${esc(p.no)} · 종합 <em class="${heat(p.comp)}">${p.comp.toFixed(1)}</em> · 판매율 ${pct(p.rate)}</span>${cm ? `<small>${esc(cm)}</small>` : ''}</div></div>`;
+  return `<div class="it"><div class="th">${thumb(p)}</div><div class="tx"><b>${esc(p.name)}</b><span>${showCat ? `<u style="background:${catColor[p.cat]}"></u>` : ''}${esc(p.no)} · 디자인 <em class="${heat(p.design)}">${p.design.toFixed(1)}</em> · 가격 <em class="${heat(p.pscore)}">${p.pscore.toFixed(1)}</em> · 판매율 ${pct(p.rate)}</span>${cm ? `<small>${esc(cm)}</small>` : ''}</div></div>`;
 }
 function quadBox(d, list, n, showCat, total) {
   return `<div class="qb"><div class="qh" style="border-color:${d.col}"><b style="color:${d.col}">${d.h}</b><span>${total}개 상품</span></div>${list.slice(0, n).map(p => itemRow(p, showCat)).join('') || '<div class="empty">해당 상품 없음</div>'}</div>`;
 }
 function scatter(qd, w = 330, h = 190) {
-  const pts = qd.rated, pad = { l: 34, r: 8, t: 8, b: 26 };
-  const xmin = 1.5, xmax = 5, ymax = Math.max(0.05, ...pts.map(p => p.rate)) * 1.12;
-  const X = v => pad.l + ((v - xmin) / (xmax - xmin)) * (w - pad.l - pad.r), Y = v => h - pad.b - (v / ymax) * (h - pad.t - pad.b);
-  const x3 = X(WARN), ym = Y(qd.cut);
-  let g = `<rect x="${pad.l}" y="${pad.t}" width="${x3 - pad.l}" height="${ym - pad.t}" fill="${C.steel}" opacity=".12"/><rect x="${x3}" y="${pad.t}" width="${w - pad.r - x3}" height="${ym - pad.t}" fill="${C.good}" opacity=".10"/><rect x="${pad.l}" y="${ym}" width="${x3 - pad.l}" height="${h - pad.b - ym}" fill="${C.low}" opacity=".10"/><rect x="${x3}" y="${ym}" width="${w - pad.r - x3}" height="${h - pad.b - ym}" fill="${C.brass}" opacity=".10"/>`;
-  g += `<line x1="${pad.l}" x2="${w - pad.r}" y1="${h - pad.b}" y2="${h - pad.b}" stroke="#aab0bd"/><line x1="${pad.l}" x2="${pad.l}" y1="${pad.t}" y2="${h - pad.b}" stroke="#aab0bd"/><line x1="${x3}" x2="${x3}" y1="${pad.t}" y2="${h - pad.b}" stroke="#7b8190" stroke-dasharray="3 3"/><line x1="${pad.l}" x2="${w - pad.r}" y1="${ym}" y2="${ym}" stroke="#7b8190" stroke-dasharray="3 3"/>`;
-  for (let v = 2; v <= 5; v++) g += `<text x="${X(v)}" y="${h - pad.b + 11}" font-size="8.5" text-anchor="middle" fill="#6b7385">${v}</text>`;
-  for (let i = 0; i <= 3; i++) { const v = (ymax * i) / 3; g += `<text x="${pad.l - 4}" y="${Y(v) + 3}" font-size="8.5" text-anchor="end" fill="#6b7385">${(v * 100).toFixed(0)}%</text>`; }
-  g += `<text x="${(pad.l + w - pad.r) / 2}" y="${h - 3}" font-size="9" text-anchor="middle" fill="#6b7385">종합점수 (디자인 60 : 가격 40)</text>`;
-  g += `<text x="${pad.l + 3}" y="${pad.t + 10}" font-size="8.5" fill="#5f6b80">점수 ↓ 판매율 ↑</text><text x="${w - pad.r - 3}" y="${pad.t + 10}" font-size="8.5" fill="${C.good}" text-anchor="end">점수 ↑ 판매율 ↑</text><text x="${pad.l + 3}" y="${h - pad.b - 4}" font-size="8.5" fill="${C.low}">점수 ↓ 판매율 ↓</text><text x="${w - pad.r - 3}" y="${h - pad.b - 4}" font-size="8.5" fill="${C.brass}" text-anchor="end">점수 ↑ 판매율 ↓</text>`;
+  const pts = qd.rated, pad = { l: 34, r: 8, t: 8, b: 26 }, lo = 1.5, hi = 5;
+  const X = v => pad.l + ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * (w - pad.l - pad.r), Y = v => h - pad.b - ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * (h - pad.t - pad.b);
+  const x3 = X(WARN), y3 = Y(WARN);
+  let g = `<rect x="${pad.l}" y="${pad.t}" width="${x3 - pad.l}" height="${y3 - pad.t}" fill="${C.steel}" opacity=".12"/><rect x="${x3}" y="${pad.t}" width="${w - pad.r - x3}" height="${y3 - pad.t}" fill="${C.good}" opacity=".10"/><rect x="${pad.l}" y="${y3}" width="${x3 - pad.l}" height="${h - pad.b - y3}" fill="${C.low}" opacity=".10"/><rect x="${x3}" y="${y3}" width="${w - pad.r - x3}" height="${h - pad.b - y3}" fill="${C.brass}" opacity=".10"/>`;
+  g += `<line x1="${pad.l}" x2="${w - pad.r}" y1="${h - pad.b}" y2="${h - pad.b}" stroke="#aab0bd"/><line x1="${pad.l}" x2="${pad.l}" y1="${pad.t}" y2="${h - pad.b}" stroke="#aab0bd"/><line x1="${x3}" x2="${x3}" y1="${pad.t}" y2="${h - pad.b}" stroke="#7b8190" stroke-dasharray="3 3"/><line x1="${pad.l}" x2="${w - pad.r}" y1="${y3}" y2="${y3}" stroke="#7b8190" stroke-dasharray="3 3"/>`;
+  for (let v = 2; v <= 5; v++) g += `<text x="${X(v)}" y="${h - pad.b + 11}" font-size="8.5" text-anchor="middle" fill="#6b7385">${v}</text><text x="${pad.l - 5}" y="${Y(v) + 3}" font-size="8.5" text-anchor="end" fill="#6b7385">${v}</text>`;
+  g += `<text x="${(pad.l + w - pad.r) / 2}" y="${h - 3}" font-size="9" text-anchor="middle" fill="#6b7385">디자인 점수</text><text x="${pad.l + 3}" y="${pad.t + 10}" font-size="8.5" fill="#5f6b80">디자인 ↓ 가격 ↑</text><text x="${w - pad.r - 3}" y="${pad.t + 10}" font-size="8.5" fill="${C.good}" text-anchor="end">디자인 ↑ 가격 ↑</text><text x="${pad.l + 3}" y="${h - pad.b - 4}" font-size="8.5" fill="${C.low}">디자인 ↓ 가격 ↓</text><text x="${w - pad.r - 3}" y="${h - pad.b - 4}" font-size="8.5" fill="${C.brass}" text-anchor="end">디자인 ↑ 가격 ↓</text>`;
   for (const p of pts) {
-    const d = QDEF.find(q => (q.k[0] === 'H') === (p.comp >= WARN) && (q.k[1] === 'H') === (p.rate >= qd.cut));
-    g += `<circle cx="${X(Math.min(xmax, Math.max(xmin, p.comp))).toFixed(1)}" cy="${Y(p.rate).toFixed(1)}" r="3.6" fill="${d.col}" stroke="#fff" stroke-width="1.2"/>`;
+    const d = QDEF.find(q => (q.k[0] === 'H') === (p.design >= WARN) && (q.k[1] === 'H') === (p.pscore >= WARN));
+    g += `<circle cx="${X(p.design).toFixed(1)}" cy="${Y(p.pscore).toFixed(1)}" r="3.6" fill="${d.col}" fill-opacity=".85" stroke="#fff" stroke-width="1.2"/>`;
   }
   return `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img">${g}</svg>`;
 }
@@ -301,7 +297,7 @@ const dash = (inner, cls = '') => mainPages.push(`<section class="pg dash ${cls}
     lowCat && `<div style="border-color:${C.low}"><b>${lowCat[0]}</b> 가격 점수가 가장 낮음 (${lowCat[1].toFixed(2)})</div>`,
     lowSeason && `<div style="border-color:${C.warn}">시즌 전반 중 <b>${lowSeason.label}</b> 점수가 가장 낮음 (${lowSeason.v.toFixed(1)})</div>`,
     `<div style="border-color:${C.brass}">현재 판매가가 적정 상한을 넘는 세부 복종 <b>${over.length}개</b>${over.length ? ' · ' + over.slice(0, 3).join(', ') + (over.length > 3 ? ' 외' : '') : ''}</div>`,
-    `<div style="border-color:${C.good}">점수 높고 판매율 낮은 상품 <b>${qa.q.HL.length}개</b> · 점수 낮고 판매율 낮은 상품 <b>${qa.q.LL.length}개</b></div>`,
+    `<div style="border-color:${C.good}">디자인·가격 모두 높은 상품 <b>${qa.q.HH.length}개</b> · 모두 낮은 상품 <b>${qa.q.LL.length}개</b></div>`,
   ].filter(Boolean).join('');
   const subm = CHANNELS.map(ch => { const all = stores.filter(x => x.type === ch).length, dn = stores.filter(x => x.type === ch && S.some(r => r['매장명'] === x.name)).length; return `<span>${chLabel(ch)} <b>${dn}/${all}</b></span>`; }).join('');
   dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '매장 반응도 조사 · 요약', `응답 ${today} · 판매 ${asOf} 기준 · 출고 상품 ${products.length}개<br>종합점수 = 디자인 60% + 가격 40%<div class="subm">제출 현황 ${subm}</div>`)}
@@ -312,7 +308,7 @@ const dash = (inner, cls = '') => mainPages.push(`<section class="pg dash ${cls}
    <div class="bx"><h3>핵심 포인트</h3><div class="ins">${pts}</div></div>
    <div class="bx"><h3>카테고리별 입고 · 판매</h3>${salesRows}</div>
    <div class="bx"><h3>시즌 전반 (전년 3.0 기준)</h3>${hbars(seasonBars, { rowH: 12, gap: 6, label: 66 })}</div>
-   <div class="bx"><h3>상품 4분면 (전 카테고리)</h3><div class="qns">${qn}</div><div class="note" style="margin-top:2mm">종합 ${WARN.toFixed(1)} · 판매율은 카테고리별 기준 (중앙값 × ${RATE_UP.toFixed(1)})</div></div>
+   <div class="bx"><h3>상품 4분면 (전 카테고리)</h3><div class="qns">${qn}</div><div class="note" style="margin-top:2mm">디자인 · 가격 점수 각 ${WARN.toFixed(1)} 기준</div></div>
   </div><div class="note">점수 기준: ${LOW.toFixed(1)} 미만 <i class="sw hl"></i> · ${WARN.toFixed(1)} 미만 <i class="sw hw"></i> · 시즌 전반은 전년(25AW)을 3점 기준으로 평가</div>`, 'p1');
 }
 
@@ -343,10 +339,10 @@ for (const c of CATS) {
     kpi(e ? n0(e.inb) : '-', '입고', e ? py(e.inb, e.pInb, n0) : ''), kpi(e ? n0(e.sale) : '-', '판매', e ? py(e.sale, e.pSale, n0) : ''),
     kpi(e ? pct(e.rate) : '-', '판매율', e ? py(e.rate, e.pRate, pct, false) : ''),
   ].join('');
-  dash(`${mast(`<u style="background:${catColor[c]}"></u>${SEASON} · ${c}`, `${c} 반응도`, `4분면 기준: 종합 ${WARN.toFixed(1)} · 판매율 ${pct(qd.cut)} (조사 상품 중앙값 ${pct(qd.medRate)} × ${RATE_UP.toFixed(1)})<br>평가된 상품 ${qd.rated.length}개 분류 · 입고·판매는 카테고리 전체(판매 시스템 기준)`)}
+  dash(`${mast(`<u style="background:${catColor[c]}"></u>${SEASON} · ${c}`, `${c} 반응도`, `4분면 기준: 디자인 ${WARN.toFixed(1)} · 가격 ${WARN.toFixed(1)}<br>평가된 상품 ${qd.rated.length}개 분류 · 입고·판매는 카테고리 전체(판매 시스템 기준)`)}
   <div class="kpis k7">${kp}</div>
   <div class="gc">
-   <div class="lc"><div class="bx"><h3>세부 복종 종합점수 (상품 수)</h3>${hbars(subs, { rowH: 10.5, gap: 4.2, w: 340 })}</div><div class="bx"><h3>종합점수(가로) × 판매율(세로)</h3>${scatter(qd, 340, 175)}</div></div>
+   <div class="lc"><div class="bx"><h3>세부 복종 종합점수 (상품 수)</h3>${hbars(subs, { rowH: 10.5, gap: 4.2, w: 340 })}</div><div class="bx"><h3>디자인(가로) × 가격(세로)</h3>${scatter(qd, 340, 175)}</div></div>
    <div class="rc">${QDEF.map(d => quadBox(d, qd.q[d.k], 4, false, qd.q[d.k].length)).join('')}</div>
   </div>`, 'pc');
 }
@@ -381,17 +377,15 @@ for (const c of CATS) {
   dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '경쟁브랜드 현황', '매장이 꼽은 대표 경쟁브랜드 (의류·가방 각 2곳)')}<div class="g2">${col('의류')}${col('가방')}</div>`, 'p7');
 }
 
-// ---- P8 점검 우선순위 (4분면 전 복종)
+// ---- P8 상품 4분면 (전 카테고리)
 {
-  const qa = quadrants(null);
-  // 복종별 중앙값 기준으로 다시 분류해 합산
   const merged = { HH: [], HL: [], LH: [], LL: [] };
-  for (const c of CATS) { const q = quadrants(c); for (const k in merged) merged[k].push(...q.q[k].map(p => ({ ...p, _rel: 0 }))); }
-  const order = { HH: p => p.comp, HL: p => p.comp - (p.rate || 0) * 5, LH: p => -p.comp + (p.rate || 0) * 5, LL: p => -p.comp - (p.rate || 0) * 5 };
-  for (const k in merged) merged[k].sort((a, b) => order[k](b) - order[k](a));
-  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '상품 4분면 · 점수 × 판매율', `종합 ${WARN.toFixed(1)} · 판매율은 카테고리별 기준 (중앙값 × ${RATE_UP.toFixed(1)})<br>전체 ${qa.rated.length}개 평가 상품`)}
+  for (const c of CATS) { const q = quadrants(c); for (const k in merged) merged[k].push(...q.q[k]); }
+  for (const k in merged) merged[k].sort((a, b) => qscore(k, b) - qscore(k, a));
+  const tot = Object.values(merged).reduce((a, l) => a + l.length, 0);
+  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '상품 4분면 · 디자인 × 가격', `디자인 · 가격 점수 각 ${WARN.toFixed(1)} 기준<br>전체 ${tot}개 평가 상품`)}
   <div class="g4">${QDEF.map(d => quadBox(d, merged[d.k], 6, true, merged[d.k].length)).join('')}</div>
-  <div class="note"><u class="dt" style="background:${C.bag}"></u>가방 <u class="dt" style="background:${C.cloth}"></u>의류 <u class="dt" style="background:${C.hat}"></u>모자 · 상품별 상세와 매장별 의견은 부록에 있습니다</div>`, 'p8');
+  <div class="note"><u class="dt" style="background:${C.bag}"></u>가방 <u class="dt" style="background:${C.cloth}"></u>의류 <u class="dt" style="background:${C.hat}"></u>모자 · 각 칸은 해당 구간에서 점수 차이가 큰 순서 · 상품별 상세와 매장별 의견은 부록에 있습니다</div>`, 'p8');
 }
 
 /* ---------- HTML ---------- */
