@@ -90,13 +90,15 @@ const channelOf = name => typeOf[name] || (S.concat(PR).find(r => r['매장명']
 // 상품별 집계
 const byProd = {};
 for (const r of PR) (byProd[r['품번']] ||= []).push(r);
+const KW = JSON.parse(readFileSync(join(ROOT, 'tools/keywords.json'), 'utf8'));
+const STATUS_RE = new RegExp(KW.status.pattern);
 const products = prodList.items.map(p => {
   const rs = byProd[p.no] || [], m = pmBy[p.no] || {};
   const inbound = m.inbound_qty ?? null, sales = m.sales_qty ?? null;
   return {
-    ...p, n: rs.length, design: avg(rs.map(r => num(r['디자인']))), pscore: avg(rs.map(r => num(r['가격']))),
+    ...p, rows: rs, n: rs.filter(r => num(r['디자인']) != null || num(r['가격']) != null).length, notIn: new Set(rs.filter(r => STATUS_RE.test(r['한줄평'] || '')).map(r => r['매장명'])).size, design: avg(rs.map(r => num(r['디자인']))), pscore: avg(rs.map(r => num(r['가격']))),
     inbound, sales, rate: inbound ? sales / inbound : (m.sell_through ?? null),
-    comments: rs.filter(r => r['한줄평']).map(r => ({ store: r['매장명'], text: r['한줄평'] })),
+    comments: rs.filter(r => r['한줄평'] && !STATUS_RE.test(r['한줄평'])).map(r => ({ store: r['매장명'], text: r['한줄평'] })),
   };
 });
 const respByCat = c => PR.filter(r => r['복종'] === c);
@@ -251,9 +253,18 @@ function quadrants(cat) {
   for (const d of QDEF) out.q[d.k] = rated.filter(p => (d.k[0] === 'H') === (p.design >= WARN) && (d.k[1] === 'H') === (p.pscore >= WARN)).sort((a, b) => qscore(d.k, b) - qscore(d.k, a));
   return out;
 }
+const KW_RULES = KW.rules.map(r => ({ ...r, res: r.patterns.map(x => new RegExp(x)) }));
+function kwOf(p) {
+  if (p._kw) return p._kw;
+  const by = new Map();
+  for (const c of p.comments) for (const r of KW_RULES) if (r.res.some(x => x.test(c.text))) { if (!by.has(r.label)) by.set(r.label, { label: r.label, tone: r.tone, stores: new Set() }); by.get(r.label).stores.add(c.store); }
+  return (p._kw = [...by.values()].map(k => ({ label: k.label, tone: k.tone, count: k.stores.size })).sort((a, b) => b.count - a.count));
+}
+const chip = (k, n = true) => `<span class="kw ${k.tone}">${esc(k.label)}${n ? ` ${k.count}` : ''}</span>`;
 function itemRow(p, showCat) {
-  const cm = p.comments[0] ? clip(p.comments[0].text, 34) : '';
-  return `<div class="it"><div class="th">${thumb(p)}</div><div class="tx"><b>${esc(p.name)}</b><span>${showCat ? `<u style="background:${catColor[p.cat]}"></u>` : ''}${esc(p.no)} · 디자인 <em class="${heat(p.design)}">${p.design.toFixed(1)}</em> · 가격 <em class="${heat(p.pscore)}">${p.pscore.toFixed(1)}</em> · 판매율 ${pct(p.rate)}</span>${cm ? `<small>${esc(cm)}</small>` : ''}</div></div>`;
+  const kws = kwOf(p).filter(k => k.count >= KW.minCount).slice(0, 3);
+  const third = kws.map(k => chip(k)).join('') + (p.notIn ? `<span class="kw st">미입점 ${p.notIn}</span>` : '') || (p.comments.length ? `<small>한줄평 ${p.comments.length}건</small>` : '');
+  return `<div class="it" data-no="${esc(p.no)}"><div class="th">${thumb(p)}</div><div class="tx"><div class="nm"><b>${esc(p.name)}</b><i class="pv">${p.price ? n0(p.price) + '원' : ''}</i></div><span>${showCat ? `<u style="background:${catColor[p.cat]}"></u>` : ''}${esc(p.no)} · 디자인 <em class="${heat(p.design)}">${p.design.toFixed(1)}</em> · 가격 <em class="${heat(p.pscore)}">${p.pscore.toFixed(1)}</em> · 판매율 ${pct(p.rate)}</span>${third ? `<div class="kws">${third}</div>` : ''}</div></div>`;
 }
 function quadBox(d, list, n, showCat, total) {
   return `<div class="qb"><div class="qh" style="border-color:${d.col}"><b style="color:${d.col}">${d.h}</b><span>${total}개 상품</span></div>${list.slice(0, n).map(p => itemRow(p, showCat)).join('') || '<div class="empty">해당 상품 없음</div>'}</div>`;
@@ -339,7 +350,7 @@ for (const c of CATS) {
     kpi(e ? n0(e.inb) : '-', '입고', e ? py(e.inb, e.pInb, n0) : ''), kpi(e ? n0(e.sale) : '-', '판매', e ? py(e.sale, e.pSale, n0) : ''),
     kpi(e ? pct(e.rate) : '-', '판매율', e ? py(e.rate, e.pRate, pct, false) : ''),
   ].join('');
-  dash(`${mast(`<u style="background:${catColor[c]}"></u>${SEASON} · ${c}`, `${c} 반응도`, `4분면 기준: 디자인 ${WARN.toFixed(1)} · 가격 ${WARN.toFixed(1)}<br>평가된 상품 ${qd.rated.length}개 분류 · 입고·판매는 카테고리 전체(판매 시스템 기준)`)}
+  dash(`${mast(`<u style="background:${catColor[c]}"></u>${SEASON} · ${c}`, `${c} 반응도`, `4분면 기준: 디자인 ${WARN.toFixed(1)} · 가격 ${WARN.toFixed(1)}<br>평가된 상품 ${qd.rated.length}개 분류 · 입고·판매는 카테고리 전체(판매 시스템 기준)<span class="so"><br>상품을 클릭하면 상세 정보와 매장 의견 종합이 열립니다</span>`)}
   <div class="kpis k7">${kp}</div>
   <div class="gc">
    <div class="lc"><div class="bx"><h3>세부 복종 종합점수 (상품 수)</h3>${hbars(subs, { rowH: 10.5, gap: 4.2, w: 340 })}</div><div class="bx"><h3>디자인(가로) × 가격(세로)</h3>${scatter(qd, 340, 175)}</div></div>
@@ -388,6 +399,36 @@ for (const c of CATS) {
   <div class="note"><u class="dt" style="background:${C.bag}"></u>가방 <u class="dt" style="background:${C.cloth}"></u>의류 <u class="dt" style="background:${C.hat}"></u>모자 · 각 칸은 해당 구간에서 점수 차이가 큰 순서 · 상품별 상세와 매장별 의견은 부록에 있습니다</div>`, 'p8');
 }
 
+// ---- 상품 상세 (HTML 전용, 상품 클릭 시 팝업)
+const dist5 = (rows, key) => { const a = [0, 0, 0, 0, 0]; rows.forEach(r => { const v = num(r[key]); if (v >= 1 && v <= 5) a[Math.round(v) - 1]++; }); return a; };
+const distBars = a => { const mx = Math.max(1, ...a); return a.map((n, i) => `<div class="db"><span>${i + 1}점</span><div><i class="s${i + 1}" style="width:${(n / mx) * 100}%"></i></div><b>${n}</b></div>`).join(''); };
+const QSAY = { HH: '디자인·가격 모두 호의적', HL: '디자인은 호의적이나 가격 점수가 낮음', LH: '가격은 수용되나 디자인 점수가 낮음', LL: '디자인·가격 모두 점수가 낮음' };
+function detailHtml(p) {
+  const rows = p.rows || [], valid = rows.filter(r => num(r['디자인']) != null || num(r['가격']) != null);
+  const catRs = respByCat(p.cat), cd = dAvg(catRs), cpv = pAvg(catRs), medR = med(products.filter(x => x.cat === p.cat).map(x => x.rate));
+  const dl = (v, b) => (v == null || b == null ? '' : `<em class="${v - b >= 0 ? 'up' : 'dn'}">카테고리 평균 대비 ${v - b >= 0 ? '+' : ''}${(v - b).toFixed(2)}</em>`);
+  const quad = p.design != null && p.pscore != null ? QDEF.find(q => (q.k[0] === 'H') === (p.design >= WARN) && (q.k[1] === 'H') === (p.pscore >= WARN)) : null;
+  const kws = kwOf(p), stores = new Set(valid.map(r => r['매장명'])).size;
+  const topK = kws.filter(k => k.count >= (stores >= 5 ? KW.minCount : 1)).slice(0, 4);
+  const say = !stores ? '아직 평가 응답이 없습니다.' : `${stores}개 매장이 평가했습니다.${quad ? ' ' + QSAY[quad.k] + '입니다.' : ''}${topK.length ? ' 주요 의견은 ' + topK.map(k => `<b>${esc(k.label)}</b>(${k.count}곳)`).join(', ') + '입니다.' : ''}${p.notIn ? ` ${p.notIn}개 매장은 미입점·미입고로 응답했습니다.` : ''}`;
+  const ch = CHANNELS.map(c => { const rr = valid.filter(r => channelOf(r['매장명']) === c); return `<tr><td>${chLabel(c)}</td><td class="n">${new Set(rr.map(r => r['매장명'])).size || '-'}</td><td class="n">${cell(dAvg(rr), 2)}</td><td class="n">${cell(pAvg(rr), 2)}</td></tr>`; }).join('');
+  const cm = p.comments.slice(0, 12).map(c => `<li><b>${esc(c.store)}</b> ${esc(clean(c.text))}</li>`).join('');
+  return `<div class="dd">
+  <div class="dh"><div class="dimg">${p.img ? `<img src="../../${SEASON}/${p.img}" alt="">` : '<span>이미지 준비중</span>'}</div>
+   <div class="di"><div class="dcat"><u style="background:${catColor[p.cat]}"></u>${p.cat} · ${esc(p.sub)}</div><h2>${esc(p.name)}</h2>
+    <div class="dm"><span class="tag">${p.no}</span><span class="tag">판매가 ${p.price ? n0(p.price) + '원' : '-'}</span>${p.grade ? `<span class="tag g">${esc(p.grade)}등급</span>` : ''}${p.colors.map(c => `<span class="tag c">${esc(c)}</span>`).join('')}</div>
+    ${quad ? `<div class="dq" style="border-color:${quad.col}"><b style="color:${quad.col}">${quad.h}</b><span>${QSAY[quad.k]}</span></div>` : ''}
+    <div class="dsale"><div><small>입고</small><b>${n0(p.inbound)}</b></div><div><small>판매</small><b>${n0(p.sales)}</b></div><div><small>판매율</small><b>${pct(p.rate)}</b><em>${medR != null ? '카테고리 중앙값 ' + pct(medR) : ''}</em></div></div>
+   </div></div>
+  <div class="dcards"><div class="dc"><small>종합점수</small><b class="${heat(p.comp)}">${p.comp == null ? '-' : p.comp.toFixed(2)}</b><em>디자인 60 · 가격 40</em></div><div class="dc"><small>디자인</small><b class="${heat(p.design)}">${p.design == null ? '-' : p.design.toFixed(2)}</b>${dl(p.design, cd)}</div><div class="dc"><small>가격</small><b class="${heat(p.pscore)}">${p.pscore == null ? '-' : p.pscore.toFixed(2)}</b>${dl(p.pscore, cpv)}</div><div class="dc"><small>평가 매장</small><b>${stores}</b><em>미입점·미입고 ${p.notIn}곳</em></div></div>
+  <div class="dgrid">
+   <div class="dbox"><h4>점수 분포</h4><div class="dd2"><div><small>디자인</small>${distBars(dist5(valid, '디자인'))}</div><div><small>가격</small>${distBars(dist5(valid, '가격'))}</div></div><h4 style="margin-top:12px">매장형태별</h4><table><thead><tr><th>구분</th><th class="n">매장</th><th class="n">디자인</th><th class="n">가격</th></tr></thead><tbody>${ch}</tbody></table></div>
+   <div class="dbox"><h4>매장 의견 종합</h4><p class="dsay">${say}</p><div class="dkw">${kws.map(k => chip(k)).join('') || '<span class="mut">반복 키워드 없음</span>'}${p.notIn ? `<span class="kw st">미입점·미입고 ${p.notIn}</span>` : ''}</div>${cm ? `<h4 style="margin-top:12px">매장 한줄평 (${p.comments.length}건)</h4><ul class="dcm">${cm}</ul>` : ''}</div>
+  </div></div>`;
+}
+const detailTemplates = products.map(p => `<template id="d-${esc(p.no)}">${detailHtml(p)}</template>`).join('');
+const modalHtml = `<div class="modal" id="modal" hidden><div class="mp"><button class="mx" type="button" aria-label="닫기">×</button><div id="mbody"></div></div></div>${detailTemplates}<script>(function(){var m=document.getElementById('modal'),b=document.getElementById('mbody');function close(){m.hidden=true;document.body.style.overflow=''}document.addEventListener('click',function(e){var it=e.target.closest('[data-no]');if(it){var t=document.getElementById('d-'+it.getAttribute('data-no'));if(t){b.innerHTML=t.innerHTML;m.hidden=false;document.body.style.overflow='hidden';m.querySelector('.mp').scrollTop=0}return}if(e.target===m||e.target.closest('.mx'))close()});document.addEventListener('keydown',function(e){if(e.key==='Escape')close()})})();<\/script>`;
+
 /* ---------- HTML ---------- */
 const css = `
 :root{--ink:#1c2230;--mut:#6b7385;--line:#e6e8ec;--navy:#1F3A5C;--navy2:#16283F;--gold:#D9C68C;--brass:#8C6B1F;--mist:#e3e8f0;--bg:#F2F2F2;--lowbg:#f2dcd9;--lowfg:#8a2a22;--warnbg:#f4e8c8;--warnfg:#6b5010;--okbg:#e3e8f0;--okfg:#1F3A5C;--hibg:#cdd9ea;--hifg:#16283F}
@@ -418,6 +459,23 @@ em.hl,em.hw,em.ho,em.hh,em.h0{font-style:normal;padding:0 1mm;border-radius:.8mm
 .it{display:grid;grid-template-columns:9.5mm 1fr;gap:2mm;align-items:center;padding:.9mm 0;border-top:.5pt solid #f0f1f4}.th{width:9.5mm;height:11mm;border:.5pt solid var(--line);display:grid;place-items:center;overflow:hidden;background:#fff}.th img{width:100%;height:100%;object-fit:contain}.th i{font-size:6pt;color:#b0b5c0;font-style:normal}
 .tx{min-width:0;display:grid}.tx b{font-size:8pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tx span{font-size:7pt;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tx small{font-size:7pt;color:#4a5263;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tx u{display:inline-block;width:1.8mm;height:1.8mm;border-radius:50%;margin-right:1mm}
 .sr{display:grid;grid-template-columns:18mm 1fr 30mm;gap:2mm;align-items:center;margin-bottom:1.6mm;font-size:8pt}.sr span u{display:inline-block;width:2mm;height:2mm;border-radius:50%;margin-right:1.2mm}.bar2{position:relative;height:3mm;background:#f1f3f7;border-radius:1mm}.bar2 i{position:absolute;left:0;top:0;bottom:0;border-radius:1mm}.bar2 i+i{height:1.2mm;top:.9mm;opacity:1}.sr em .py{display:block;font-weight:400;font-size:6.8pt;color:var(--mut)}.subm{margin-top:1.4mm;font-size:7pt;color:#c6d0df}.subm span{margin-left:2.4mm}.subm b{color:#fff;font-weight:500}.sr em{font-style:normal;font-size:7pt;color:var(--mut);text-align:right;line-height:1.2}.sr em b{display:block;color:var(--navy2);font-size:8pt}
+.nm{display:flex;align-items:baseline;gap:1.6mm;min-width:0}.nm b{flex:0 1 auto;min-width:0;display:block}.nm .pv{flex:none;font-style:normal;font-size:7.4pt;color:var(--navy);font-weight:500}
+.kws{display:flex;flex-wrap:wrap;gap:.8mm 1mm;margin-top:.4mm}.kw{font-size:6.6pt;padding:.1mm 1.4mm;border-radius:2mm;white-space:nowrap;background:#eef1f6;color:#3b475c}.kw.pos{background:#e1ece6;color:#2c5f46}.kw.neg{background:#f2dcd9;color:#8a2a22}.kw.neu{background:#eef1f6;color:#3b475c}.kw.st{background:#f1f3f7;color:#7b8190;border:.4pt solid #d4d8e0}
+.it{cursor:pointer}.it:hover{background:#f7f8fb}.so{display:inline}
+.modal{position:fixed;inset:0;background:rgba(15,25,40,.55);display:grid;place-items:center;z-index:50;padding:16px}.modal[hidden]{display:none}
+.mp{background:#fff;border-radius:10px;max-width:980px;width:100%;max-height:92vh;overflow:auto;padding:22px 26px;position:relative;font-size:13px;line-height:1.5}
+.mx{position:absolute;top:10px;right:14px;border:0;background:none;font-size:26px;line-height:1;color:#6b7385;cursor:pointer}
+.dd .dh{display:grid;grid-template-columns:220px 1fr;gap:20px}.dd .dimg{aspect-ratio:4/3;border:1px solid var(--line);border-radius:8px;display:grid;place-items:center;overflow:hidden;color:#9aa0ab}.dd .dimg img{width:100%;height:100%;object-fit:contain}
+.dd h2{border:0;margin:2px 0 6px;font-size:20px;color:var(--navy2);padding:0}.dcat{font-size:12px;color:var(--mut)}.dcat u{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+.dm{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}.tag{font-size:12px;padding:2px 10px;border-radius:99px;background:#eef1f6;color:var(--navy2);font-weight:500}.tag.g{background:var(--navy2);color:#fff}.tag.c{background:none;border:1px solid var(--line);color:var(--mut)}
+.dq{border-left:4px solid;padding:3px 10px;margin-bottom:10px;background:#f7f8fa}.dq b{margin-right:8px}.dq span{color:var(--mut);font-size:12px}
+.dsale{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.dsale div{background:#f7f8fa;border-radius:6px;padding:6px 10px}.dsale small{display:block;font-size:11px;color:var(--mut)}.dsale b{font-size:16px;font-variant-numeric:tabular-nums}.dsale em{display:block;font-style:normal;font-size:10.5px;color:var(--mut)}
+.dcards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}.dc{border:1px solid var(--line);border-radius:8px;padding:8px 12px}.dc small{display:block;font-size:11px;color:var(--mut)}.dc b{font-size:24px;font-variant-numeric:tabular-nums;padding:0 6px;border-radius:4px;display:inline-block;margin:2px 0}.dc em{display:block;font-style:normal;font-size:11px;color:var(--mut)}.dc em.up{color:#2c5f46}.dc em.dn{color:#8a2a22}
+.dgrid{display:grid;grid-template-columns:1fr 1.2fr;gap:14px}.dbox{border:1px solid var(--line);border-radius:8px;padding:12px 14px}.dbox h4{margin:0 0 6px;font-size:13px;color:var(--navy2)}
+.dd2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.dd2 small{font-size:11px;color:var(--mut)}.db{display:grid;grid-template-columns:28px 1fr 20px;gap:6px;align-items:center;font-size:11px;margin:2px 0}.db div{height:8px;background:#f1f3f7;border-radius:3px}.db i{display:block;height:100%;background:var(--navy);border-radius:3px;opacity:.75}.db i.s1,.db i.s2{background:#b5524a}.db b{text-align:right;font-weight:500}
+.dd table{font-size:12px}.dsay{margin:0 0 8px;font-size:13px}.dkw{display:flex;flex-wrap:wrap;gap:6px}.dd .kw{font-size:12px;padding:2px 10px}
+.dcm{margin:0;padding:0;list-style:none;font-size:12px}.dcm li{padding:4px 0;border-top:1px solid #f0f1f4}.dcm b{color:var(--navy2);margin-right:6px}
+@media (max-width:760px){.dd .dh,.dgrid{grid-template-columns:1fr}.dcards{grid-template-columns:1fr 1fr}}
 .empty{color:#9aa0ab;font-size:7.8pt;padding:2mm 0}
 .qt{font-size:8pt;border-left:.8mm solid var(--mist);padding:.6mm 0 .6mm 2.4mm;margin-bottom:1.6mm}.qt b{color:var(--navy2)}
 .pgh{font-weight:700;font-size:9pt;margin:1.4mm 0 .4mm;color:var(--navy2);border-bottom:.5pt solid var(--line);padding-bottom:.6mm}.pgh u{display:inline-block;width:2.4mm;height:2.4mm;border-radius:50%;margin-right:1.6mm}
@@ -436,13 +494,13 @@ td.cm{font-size:7.5pt;min-width:60mm}td.cm div{margin-bottom:.6mm}td.low,.low{ba
 .kpi{border:.5pt solid var(--line);padding:2mm 3mm}.kpi b{display:block;font-size:13pt}.kpi span{font-size:7.5pt;color:var(--mut)}
 .tagr{background:var(--lowbg);color:var(--lowfg);padding:0 1.5mm;font-weight:700;white-space:nowrap}.tagb{background:var(--okbg);color:var(--okfg);padding:0 1.5mm;font-weight:700;white-space:nowrap}.tagg{background:#e1ece6;color:#2c5f46;padding:0 1.5mm;font-weight:700;white-space:nowrap}.nw{white-space:nowrap}
 @page{size:A4 landscape;margin:0}
-@media print{body{background:#fff}.pg{width:297mm;min-height:210mm;margin:0;box-shadow:none;break-after:page}.pg:last-child{break-after:auto}.pg.dash{height:210mm}}
+@media print{.modal,template{display:none!important}.so{display:none}.it{cursor:auto}body{background:#fff}.pg{width:297mm;min-height:210mm;margin:0;box-shadow:none;break-after:page}.pg:last-child{break-after:auto}.pg.dash{height:210mm}}
 `;
 const fontLink = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Sans:wght@400;500;700&display=swap">';
-const wrap = (title, pagesArr) => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${title}</title>${fontLink}<style>${css}</style></head><body>${pagesArr.join('\n')}</body></html>`;
+const wrap = (title, pagesArr, extra = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${title}</title>${fontLink}<style>${css}</style></head><body>${pagesArr.join('\n')}${extra}</body></html>`;
 const outDir = join(ROOT, 'reports', SEASON); mkdirSync(outDir, { recursive: true });
 const outMain = join(outDir, `취합리포트_${today}.html`), outApp = join(outDir, `취합리포트_부록_${today}.html`);
-writeFileSync(outMain, wrap(`${SEASON} 매장 반응도 조사 취합 리포트`, mainPages));
+writeFileSync(outMain, wrap(`${SEASON} 매장 반응도 조사 취합 리포트`, mainPages, modalHtml));
 if (!flag('main-only')) writeFileSync(outApp, wrap(`${SEASON} 매장 반응도 조사 취합 리포트 · 부록`, appPages));
 console.log(`리포트 생성: ${outMain}\n부록: ${outApp}\n  제출 ${storeCount}/${stores.length}개 매장 · 상품평가 ${PR.length}건 · 가격 ${PC.length}건 · 경쟁브랜드 ${CP.length}건 · 본문 ${mainPages.length}페이지 + 부록 ${appPages.length}개 섹션`);
 
