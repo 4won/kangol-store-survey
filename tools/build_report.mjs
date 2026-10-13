@@ -19,7 +19,9 @@ if (!SHEET && !CSVDIR) { console.error('시트 ID 가 없습니다. --sheet <ID>
 const LOW = 2.5, WARN = 3.0;                      // 점수 색 기준: LOW 미만 빨강, WARN 미만 주황
 const CATS = ['가방', '의류', '모자'];
 const PSUBS = { '가방': ['토트백', '크로스백', '백팩'], '의류': ['긴소매티셔츠', '라운드티셔츠', '집업', '바지', '자켓', '후드티셔츠', '셔츠', '니트'], '모자': ['벙거지', '야구모자'] };
-const CHANNELS = ['백화점', '쇼핑몰', '아울렛'];
+const CHANNELS = ['백화점', '아울렛', '쇼핑몰'];
+const chLabel = ch => (ch === '쇼핑몰' ? '복합쇼핑몰' : ch);
+const RATE_UP = 1.1;                              // 4분면 판매율 기준 = 중앙값 × 1.1
 
 /* ---------- 읽기 ---------- */
 function parseCsv(t) {
@@ -53,6 +55,19 @@ const index = JSON.parse(readFileSync(join(HUB, 'data/summary/index.json'), 'utf
 const pmWeek = arg('week', index.latest);
 const pm = JSON.parse(readFileSync(join(HUB, 'data/summary/productmap', pmWeek + '.json'), 'utf8'));
 const pmBy = Object.fromEntries(pm.products.map(p => [p.product_no, p]));
+// 전년(25AW) 동시점 비교: 판매 시스템(ERP) 시즌 비교 데이터. 카테고리 전체 기준
+let ERP = [];
+try {
+  const sf = join(HUB, 'data/summary/sales', pmWeek + '.json');
+  ERP = JSON.parse(readFileSync(existsSync(sf) ? sf : join(HUB, 'data/summary/sales', index.latest + '.json'), 'utf8')).seasonCompare.seasons;
+} catch (e) { console.log('전년 비교 데이터를 읽지 못했습니다:', e.message); }
+const ERP_MAP = { '가방': ['가방'], '의류': ['의류', '의류(여성)'], '모자': ['수입모자'] };
+function erpCat(c) {
+  const se = ERP.find(x => x.season === SEASON); if (!se) return null;
+  const rows = ERP_MAP[c].map(k => se.items[k]).filter(Boolean); if (!rows.length) return null;
+  const t = k => rows.reduce((a, r) => a + (r[k] || 0), 0), inb = t('in_qty'), sale = t('sale_qty'), pInb = t('py_in_qty'), pSale = t('py_sale_qty');
+  return { inb, sale, rate: inb ? sale / inb : null, pInb, pSale, pRate: pInb ? pSale / pInb : null };
+}
 
 /* ---------- 계산 ---------- */
 const avg = a => { a = a.filter(x => x != null); return a.length ? a.reduce((s, x) => s + x, 0) / a.length : null; };
@@ -199,18 +214,26 @@ const thumb = p => (p.img ? `<img src="../../${SEASON}/${p.img}" alt="">` : '<i>
 
 // SVG: 가로 막대 (점수 1~5, 2.5·3.0 기준선)
 function hbars(rows, { w = 330, label = 76, rowH = 13, gap = 6, min = 1, max = 5, thr = true } = {}) {
-  const pw = w - label - 34, xs = v => label + ((v - min) / (max - min)) * pw, H = rows.length * (rowH + gap) + 14;
+  const pw = w - label - 34, xs = v => label + ((v - min) / (max - min)) * pw;
+  const ys = []; let acc = 14; rows.forEach(r => { ys.push(acc); acc += (r.h || rowH) + (r.gap ?? gap); });
+  const H = acc;
   let g = '';
   if (thr) g += `<line x1="${xs(LOW)}" x2="${xs(LOW)}" y1="10" y2="${H}" stroke="${C.low}" stroke-dasharray="2 3" stroke-width=".8"/><line x1="${xs(WARN)}" x2="${xs(WARN)}" y1="10" y2="${H}" stroke="#9aa0ab" stroke-dasharray="2 3" stroke-width=".8"/><text x="${xs(LOW)}" y="7" font-size="8" text-anchor="middle" fill="${C.low}">2.5</text><text x="${xs(WARN)}" y="7" font-size="8" text-anchor="middle" fill="#7b8190">3.0</text>`;
   rows.forEach((r, i) => {
-    const y = 14 + i * (rowH + gap), bw = r.v == null ? 0 : Math.max(2, xs(r.v) - label);
-    g += `<text x="0" y="${y + rowH - 3}" font-size="9.5" fill="#1c2230" ${r.bold ? 'font-weight="700"' : ''}>${esc(r.label)}</text><rect x="${label}" y="${y}" width="${pw}" height="${rowH}" rx="2" fill="#f1f3f7"/>` +
-      (r.v == null ? '' : `<rect x="${label}" y="${y}" width="${bw}" height="${rowH}" rx="2" fill="${r.color || scCol(r.v)}" ${r.soft ? 'opacity=".55"' : ''}/>`) +
-      `<text x="${w}" y="${y + rowH - 3}" font-size="9.5" text-anchor="end" fill="#1c2230" ${r.bold ? 'font-weight="700"' : ''}>${r.v == null ? '-' : r.v.toFixed(2)}</text>`;
+    const y = ys[i], rh = r.h || rowH, fs = r.fs || 9.5, bw = r.v == null ? 0 : Math.max(2, xs(r.v) - label);
+    g += `<text x="${r.indent || 0}" y="${y + rh / 2 + fs * 0.36}" font-size="${fs}" fill="${r.soft ? '#5b6270' : '#1c2230'}" ${r.bold ? 'font-weight="700"' : ''}>${esc(r.label)}</text><rect x="${label}" y="${y}" width="${pw}" height="${rh}" rx="2" fill="#f1f3f7"/>` +
+      (r.v == null ? '' : `<rect x="${label}" y="${y}" width="${bw}" height="${rh}" rx="2" fill="${r.color || scCol(r.v)}" ${r.soft ? 'opacity=".6"' : ''}/>`) +
+      `<text x="${w}" y="${y + rh / 2 + fs * 0.36}" font-size="${fs}" text-anchor="end" fill="#1c2230" ${r.bold ? 'font-weight="700"' : ''}>${r.v == null ? '-' : r.v.toFixed(2)}</text>`;
   });
   return `<svg viewBox="0 0 ${w} ${H}" width="100%" role="img">${g}</svg>`;
 }
 
+// 그룹별 점수 행: 종합(굵게) → 디자인 → 가격
+const scoreRows = groups => groups.flatMap(g => [
+  { label: g.name, v: compOf(g.rs), bold: true, h: 17, fs: 11.5, color: g.color },
+  { label: '디자인', v: dAvg(g.rs), h: 9, fs: 9, soft: true, indent: 8, gap: 2, color: C.steel },
+  { label: '가격', v: pAvg(g.rs), h: 9, fs: 9, soft: true, indent: 8, gap: 12, color: C.steel },
+]);
 // 4분면 분류 (종합점수 3.0 / 판매율 복종 중앙값)
 const QDEF = [
   { k: 'HH', t: '점수 높음 · 판매율 높음', h: '유지·확대', col: C.good },
@@ -219,12 +242,12 @@ const QDEF = [
   { k: 'LL', t: '점수 낮음 · 판매율 낮음', h: '소진·정리 검토', col: C.low },
 ];
 function quadrants(cat) {
-  const all = products.filter(p => !cat || p.cat === cat), medRate = med(all.map(p => p.rate));
+  const all = products.filter(p => !cat || p.cat === cat), medRate = med(all.map(p => p.rate)), cut0 = medRate * RATE_UP;
   const rated = all.filter(p => p.n > 0 && p.comp != null && p.rate != null);
-  const rr = p => (medRate ? (p.rate - medRate) / medRate : 0), ss = p => (p.comp - WARN) / 2;
+  const rr = p => (cut0 ? (p.rate - cut0) / cut0 : 0), ss = p => (p.comp - WARN) / 2;
   const key = { HH: p => ss(p) + rr(p), HL: p => ss(p) - rr(p), LH: p => -ss(p) + rr(p), LL: p => -ss(p) - rr(p) };
-  const out = { medRate, rated, q: {} };
-  for (const d of QDEF) out.q[d.k] = rated.filter(p => (d.k[0] === 'H') === (p.comp >= WARN) && (d.k[1] === 'H') === (p.rate >= medRate)).sort((a, b) => key[d.k](b) - key[d.k](a));
+  const cut = medRate * RATE_UP, out = { medRate, cut, rated, q: {} };
+  for (const d of QDEF) out.q[d.k] = rated.filter(p => (d.k[0] === 'H') === (p.comp >= WARN) && (d.k[1] === 'H') === (p.rate >= cut)).sort((a, b) => key[d.k](b) - key[d.k](a));
   return out;
 }
 function itemRow(p, showCat) {
@@ -238,7 +261,7 @@ function scatter(qd, w = 330, h = 190) {
   const pts = qd.rated, pad = { l: 34, r: 8, t: 8, b: 26 };
   const xmin = 1.5, xmax = 5, ymax = Math.max(0.05, ...pts.map(p => p.rate)) * 1.12;
   const X = v => pad.l + ((v - xmin) / (xmax - xmin)) * (w - pad.l - pad.r), Y = v => h - pad.b - (v / ymax) * (h - pad.t - pad.b);
-  const x3 = X(WARN), ym = Y(qd.medRate);
+  const x3 = X(WARN), ym = Y(qd.cut);
   let g = `<rect x="${pad.l}" y="${pad.t}" width="${x3 - pad.l}" height="${ym - pad.t}" fill="${C.steel}" opacity=".12"/><rect x="${x3}" y="${pad.t}" width="${w - pad.r - x3}" height="${ym - pad.t}" fill="${C.good}" opacity=".10"/><rect x="${pad.l}" y="${ym}" width="${x3 - pad.l}" height="${h - pad.b - ym}" fill="${C.low}" opacity=".10"/><rect x="${x3}" y="${ym}" width="${w - pad.r - x3}" height="${h - pad.b - ym}" fill="${C.brass}" opacity=".10"/>`;
   g += `<line x1="${pad.l}" x2="${w - pad.r}" y1="${h - pad.b}" y2="${h - pad.b}" stroke="#aab0bd"/><line x1="${pad.l}" x2="${pad.l}" y1="${pad.t}" y2="${h - pad.b}" stroke="#aab0bd"/><line x1="${x3}" x2="${x3}" y1="${pad.t}" y2="${h - pad.b}" stroke="#7b8190" stroke-dasharray="3 3"/><line x1="${pad.l}" x2="${w - pad.r}" y1="${ym}" y2="${ym}" stroke="#7b8190" stroke-dasharray="3 3"/>`;
   for (let v = 2; v <= 5; v++) g += `<text x="${X(v)}" y="${h - pad.b + 11}" font-size="8.5" text-anchor="middle" fill="#6b7385">${v}</text>`;
@@ -246,7 +269,7 @@ function scatter(qd, w = 330, h = 190) {
   g += `<text x="${(pad.l + w - pad.r) / 2}" y="${h - 3}" font-size="9" text-anchor="middle" fill="#6b7385">종합점수 (디자인 60 : 가격 40)</text>`;
   g += `<text x="${pad.l + 3}" y="${pad.t + 10}" font-size="8.5" fill="#5f6b80">개선 후 확대</text><text x="${w - pad.r - 3}" y="${pad.t + 10}" font-size="8.5" fill="${C.good}" text-anchor="end">유지·확대</text><text x="${pad.l + 3}" y="${h - pad.b - 4}" font-size="8.5" fill="${C.low}">소진·정리</text><text x="${w - pad.r - 3}" y="${h - pad.b - 4}" font-size="8.5" fill="${C.brass}" text-anchor="end">노출 점검</text>`;
   for (const p of pts) {
-    const d = QDEF.find(q => (q.k[0] === 'H') === (p.comp >= WARN) && (q.k[1] === 'H') === (p.rate >= qd.medRate));
+    const d = QDEF.find(q => (q.k[0] === 'H') === (p.comp >= WARN) && (q.k[1] === 'H') === (p.rate >= qd.cut));
     g += `<circle cx="${X(Math.min(xmax, Math.max(xmin, p.comp))).toFixed(1)}" cy="${Y(p.rate).toFixed(1)}" r="3.6" fill="${d.col}" stroke="#fff" stroke-width="1.2"/>`;
   }
   return `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img">${g}</svg>`;
@@ -259,55 +282,66 @@ const dash = (inner, cls = '') => mainPages.push(`<section class="pg dash ${cls}
 {
   const ov = avg(S.map(r => num(r['전체만족도']))), allComp = compOf(PR);
   const flagged = products.filter(p => p.n > 0 && p.comp != null && p.comp < LOW).length;
-  const catBars = CATS.flatMap(c => { const rs = respByCat(c); return [{ label: c + ' 디자인', v: dAvg(rs), soft: true }, { label: c + ' 가격', v: pAvg(rs), soft: true }, { label: c + ' 종합', v: compOf(rs), bold: true, color: catColor[c] }]; });
+  const erp = Object.fromEntries(CATS.map(c => [c, erpCat(c)]));
+  const catRows = scoreRows(CATS.map(c => ({ name: c, rs: respByCat(c), color: catColor[c] })));
   const cc = ch => CATS.map(c => compOf(PR.filter(r => r['복종'] === c && channelOf(r['매장명']) === ch)));
-  const mxIn = Math.max(1, ...CATS.map(c => agg(products.filter(p => p.cat === c)).inbound));
-  const salesRows = CATS.map(c => { const a = agg(products.filter(p => p.cat === c)); return `<div class="sr"><span><u style="background:${catColor[c]}"></u>${c}</span><div class="bar2"><i style="width:${(a.inbound / mxIn) * 100}%;background:${C.steel}"></i><i style="width:${(a.sales / mxIn) * 100}%;background:${C.navy}"></i></div><em>${n0(a.sales)} / ${n0(a.inbound)}<b>${pct(rateOf(a))}</b></em></div>`; }).join('') + '<div class="note" style="margin-top:1mm"><i class="dt" style="background:#8fa3bf;margin-left:0"></i>입고 <i class="dt" style="background:#1F3A5C"></i>판매</div>';
-  const subRows = CHANNELS.map(ch => { const all = stores.filter(x => x.type === ch).length, dn = stores.filter(x => x.type === ch && S.some(r => r['매장명'] === x.name)).length; return `<div class="sr"><span>${ch}</span><div class="bar2"><i style="width:${all ? (dn / all) * 100 : 0}%;background:${C.navy}"></i></div><em>${dn} / ${all}<b>${all ? pct(dn / all) : '-'}</b></em></div>`; }).join('');
-  const hm = `<div class="hm"><span></span>${CATS.map(c => `<span class="hd">${c}</span>`).join('')}${CHANNELS.map(ch => `<span class="rl">${ch}</span>${cc(ch).map(v => cell(v)).join('')}`).join('')}</div>`;
+  const hm = `<div class="hm"><span></span>${CATS.map(c => `<span class="hd">${c}</span>`).join('')}${CHANNELS.map(ch => `<span class="rl">${chLabel(ch)}</span>${cc(ch).map(v => cell(v)).join('')}`).join('')}</div>`;
   const seasonBars = [['전체 만족도', '전체만족도'], ['상품 구성', '상품구성'], ['물량·입고', '물량·입고'], ['고객 반응', '고객반응']].map(([l, k]) => ({ label: l, v: avg(S.map(r => num(r[k]))) }));
+  const mxIn = Math.max(1, ...CATS.map(c => erp[c] ? Math.max(erp[c].inb, erp[c].pInb) : 0));
+  const salesRows = CATS.map(c => { const e = erp[c]; if (!e) return ''; return `<div class="sr"><span><u style="background:${catColor[c]}"></u>${c}</span><div class="bar2"><i style="width:${(e.inb / mxIn) * 100}%;background:${C.steel}"></i><i style="width:${(e.sale / mxIn) * 100}%;background:${C.navy}"></i></div><em>${n0(e.sale)} / ${n0(e.inb)}<b>${pct(e.rate)}</b><span class="py">전년 ${pct(e.pRate)}</span></em></div>`; }).join('') + `<div class="note" style="margin-top:1mm"><i class="dt" style="background:#8fa3bf;margin-left:0"></i>입고 <i class="dt" style="background:#1F3A5C"></i>판매 · 판매 시스템 기준, 카테고리 전체</div>`;
   const qa = quadrants(null), qn = QDEF.map(d => `<div class="qn" style="border-color:${d.col}"><b style="color:${d.col}">${qa.q[d.k].length}</b><span>${d.h}</span></div>`).join('');
   const lowCat = CATS.map(c => [c, pAvg(respByCat(c))]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1])[0];
   const topCat = CATS.map(c => [c, compOf(respByCat(c))]).filter(x => x[1] != null).sort((a, b) => b[1] - a[1])[0];
   const lowSeason = seasonBars.filter(x => x.v != null).sort((a, b) => a.v - b.v)[0];
-  const over = PSUBS && CATS.flatMap(c => PSUBS[c]).filter(sb => { const ps = products.filter(p => p.sub === sb && p.price).map(p => p.price), rs = PC.filter(r => r['세부복종'] === sb), hi = med(rs.map(r => num(r['적정상한']))); return ps.length && hi != null && med(ps) > hi; });
+  const over = CATS.flatMap(c => PSUBS[c]).filter(sb => { const ps = products.filter(p => p.sub === sb && p.price).map(p => p.price), rs = PC.filter(r => r['세부복종'] === sb), hi = med(rs.map(r => num(r['적정상한']))); return ps.length && hi != null && med(ps) > hi; });
   const pts = [
     topCat && `<div style="border-color:${C.navy}"><b>${topCat[0]}</b> 종합점수가 가장 높음 (${topCat[1].toFixed(2)})</div>`,
     lowCat && `<div style="border-color:${C.low}"><b>${lowCat[0]}</b> 가격 점수가 가장 낮음 (${lowCat[1].toFixed(2)})</div>`,
     lowSeason && `<div style="border-color:${C.warn}">시즌 전반 중 <b>${lowSeason.label}</b> 점수가 가장 낮음 (${lowSeason.v.toFixed(1)})</div>`,
-    over && `<div style="border-color:${C.brass}">현재 판매가가 적정 상한을 넘는 복종 <b>${over.length}개</b>${over.length ? ' · ' + over.slice(0, 3).join(', ') + (over.length > 3 ? ' 외' : '') : ''}</div>`,
+    `<div style="border-color:${C.brass}">현재 판매가가 적정 상한을 넘는 세부 복종 <b>${over.length}개</b>${over.length ? ' · ' + over.slice(0, 3).join(', ') + (over.length > 3 ? ' 외' : '') : ''}</div>`,
     `<div style="border-color:${C.good}">점수 높고 판매율 낮은 상품 <b>${qa.q.HL.length}개</b> · 점수 낮고 판매율 낮은 상품 <b>${qa.q.LL.length}개</b></div>`,
   ].filter(Boolean).join('');
-  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '매장 반응도 조사 · 요약', `응답 ${today} · 판매 ${asOf} 기준<br>출고 상품 ${products.length}개 · 종합점수 = 디자인 60% + 가격 40%`)}
+  const subm = CHANNELS.map(ch => { const all = stores.filter(x => x.type === ch).length, dn = stores.filter(x => x.type === ch && S.some(r => r['매장명'] === x.name)).length; return `<span>${chLabel(ch)} <b>${dn}/${all}</b></span>`; }).join('');
+  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '매장 반응도 조사 · 요약', `응답 ${today} · 판매 ${asOf} 기준 · 출고 상품 ${products.length}개<br>종합점수 = 디자인 60% + 가격 40%<div class="subm">제출 현황 ${subm}</div>`)}
   <div class="kpis">${kpi(`${storeCount}<i> / ${stores.length}</i>`, '제출 매장', pct(storeCount / stores.length))}${kpi(ov == null ? '-' : ov.toFixed(1), '시즌 만족도', '전년 25AW = 3.0', heat(ov))}${kpi(allComp == null ? '-' : allComp.toFixed(2), '종합점수', '5점 만점', heat(allComp))}${kpi(flagged, '점검 필요 상품', `종합 ${LOW.toFixed(1)} 미만`, flagged ? 'hl' : '')}${kpi(n0(PR.length), '상품 평가 건수', `${new Set(PR.map(r => r['품번'])).size}개 상품`)}</div>
-  <div class="g3">
-   <div class="bx"><h3>복종별 점수</h3>${hbars(catBars, { rowH: 11, gap: 4.4 })}<h3 style="margin-top:5mm">복종별 입고 · 판매</h3>${salesRows}</div>
-   <div class="bx"><h3>채널 × 복종 종합점수</h3>${hm}<h3 style="margin-top:4mm">시즌 전반 (전년 3.0 기준)</h3>${hbars(seasonBars, { rowH: 11, gap: 5, label: 66 })}<h3 style="margin-top:4mm">채널별 제출 현황</h3>${subRows}</div>
-   <div class="bx"><h3>핵심 포인트</h3><div class="ins">${pts}</div><h3 style="margin-top:4mm">상품 4분면 (전 복종)</h3><div class="qns">${qn}</div></div>
+  <div class="g6">
+   <div class="bx"><h3>카테고리별 점수</h3>${hbars(catRows, { w: 330 })}</div>
+   <div class="bx"><h3>채널 × 카테고리 종합점수</h3>${hm}<div class="note" style="margin-top:2mm">백화점 · 아울렛 · 복합쇼핑몰 구분</div></div>
+   <div class="bx"><h3>핵심 포인트</h3><div class="ins">${pts}</div></div>
+   <div class="bx"><h3>카테고리별 입고 · 판매</h3>${salesRows}</div>
+   <div class="bx"><h3>시즌 전반 (전년 3.0 기준)</h3>${hbars(seasonBars, { rowH: 12, gap: 6, label: 66 })}</div>
+   <div class="bx"><h3>상품 4분면 (전 카테고리)</h3><div class="qns">${qn}</div><div class="note" style="margin-top:2mm">종합 ${WARN.toFixed(1)} · 판매율은 카테고리별 기준 (중앙값 × ${RATE_UP.toFixed(1)})</div></div>
   </div><div class="note">점수 기준: ${LOW.toFixed(1)} 미만 <i class="sw hl"></i> · ${WARN.toFixed(1)} 미만 <i class="sw hw"></i> · 시즌 전반은 전년(25AW)을 3점 기준으로 평가</div>`, 'p1');
 }
 
-// ---- P2 시즌 전반 · 채널
+// ---- P2 시즌 전반 · 매장형태
 {
   const items = [['전체', '전체만족도'], ['구성', '상품구성'], ['입고', '물량·입고'], ['고객', '고객반응']];
-  const cols = [['전체', null], ...CHANNELS.map(ch => [ch, ch])];
+  const cols = [['전체', null], ...CHANNELS.map(ch => [chLabel(ch), ch])];
   const val = (col, k) => avg(S.filter(r => !col || channelOf(r['매장명']) === col).map(r => num(r[k])));
   const grid = `<div class="hm c5"><span></span>${cols.map(c => `<span class="hd">${c[0]}</span>`).join('')}${items.map(([l, k]) => `<span class="rl">${l}</span>${cols.map(c => cell(val(c[1], k))).join('')}`).join('')}</div>`;
-  const grp = [...new Set(S.map(r => r['채널형태'] + '|' + r['채널계열']))].map(g => { const [t, gr] = g.split('|'), pr = PR.filter(r => r['채널형태'] === t && r['채널계열'] === gr), ns = new Set(S.filter(r => r['채널형태'] === t && r['채널계열'] === gr).map(r => r['매장명'])).size; return { label: `${gr} (${ns})`, v: compOf(pr) }; }).filter(x => x.v != null).sort((a, b) => b.v - a.v).slice(0, 10);
+  const rows = scoreRows(CHANNELS.map(ch => ({ name: `${chLabel(ch)} (${new Set(S.filter(r => channelOf(r['매장명']) === ch).map(r => r['매장명'])).size})`, rs: PR.filter(r => channelOf(r['매장명']) === ch), color: C.navy })));
   const sel = k => S.filter(r => r[k]).slice(0, 5).map(r => `<div class="qt"><b>${esc(r['매장명'])}</b> ${esc(clip(r[k], 80))}</div>`).join('') || '<div class="empty">의견 없음</div>';
-  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '시즌 전반 · 채널별 반응', `응답 ${storeCount}개 매장`)}
+  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '시즌 전반 · 매장형태별 반응', `응답 ${storeCount}개 매장`)}
   <div class="g2">
-   <div class="bx"><h3>시즌 전반 평가 (전년 25AW = 3.0)</h3>${grid}<h3 style="margin-top:4mm">채널계열별 종합점수 (매장 수)</h3>${grp.length ? hbars(grp, { rowH: 11, gap: 4.4, w: 380 }) : '<div class="empty">데이터 없음</div>'}</div>
+   <div class="bx"><h3>시즌 전반 평가 (전년 25AW = 3.0)</h3>${grid}<h3 style="margin-top:5mm">매장형태별 점수 (매장 수)</h3>${hbars(rows, { w: 380 })}</div>
    <div class="bx"><h3>잘 된 점</h3>${sel('잘된점')}<h3 style="margin-top:4mm">아쉬운 점 · 개선 요청</h3>${sel('아쉬운점')}<h3 style="margin-top:4mm">기타 의견</h3>${sel('기타의견')}</div>
   </div>`, 'p2');
 }
 
-// ---- P3~5 복종 페이지
+// ---- P3~5 카테고리 페이지
 for (const c of CATS) {
-  const list = products.filter(p => p.cat === c), a = agg(list), rs = respByCat(c), qd = quadrants(c);
+  const list = products.filter(p => p.cat === c), rs = respByCat(c), qd = quadrants(c), e = erpCat(c);
   const subs = [...new Set(list.map(p => p.sub))].map(sb => ({ label: `${sb} (${list.filter(p => p.sub === sb).length})`, v: compOf(rs.filter(r => r['세부복종'] === sb)) })).sort((x, y) => (y.v ?? -1) - (x.v ?? -1)).slice(0, 9);
-  const kp = [kpi(list.length, '출고 상품', `평가 ${new Set(rs.map(r => r['품번'])).size}개`), kpi(compOf(rs) == null ? '-' : compOf(rs).toFixed(2), '종합점수', '', heat(compOf(rs))), kpi(f2(dAvg(rs)), '디자인', '', heat(dAvg(rs))), kpi(f2(pAvg(rs)), '가격', '', heat(pAvg(rs))), kpi(n0(a.inbound), '입고'), kpi(n0(a.sales), '판매'), kpi(pct(rateOf(a)), '판매율')].join('');
-  dash(`${mast(`<u style="background:${catColor[c]}"></u>${SEASON} · ${c}`, `${c} 반응도`, `4분면 기준: 종합 ${WARN.toFixed(1)} · 판매율 ${c} 중앙값 ${pct(qd.medRate)}<br>평가된 상품 ${qd.rated.length}개 분류`)}
+  const py = (cur, prev, f, delta = true) => (prev == null ? '' : `전년 ${f(prev)}${delta && cur != null && prev ? ` (${cur >= prev ? '▲' : '▼'}${Math.abs(Math.round(((cur - prev) / prev) * 100))}%)` : ''}`);
+  const kp = [
+    kpi(list.length, '출고 상품', `평가 ${new Set(rs.map(r => r['품번'])).size}개`),
+    kpi(compOf(rs) == null ? '-' : compOf(rs).toFixed(2), '종합점수', '디자인 60 · 가격 40', heat(compOf(rs))),
+    kpi(f2(dAvg(rs)), '디자인', '', heat(dAvg(rs))), kpi(f2(pAvg(rs)), '가격', '', heat(pAvg(rs))),
+    kpi(e ? n0(e.inb) : '-', '입고', e ? py(e.inb, e.pInb, n0) : ''), kpi(e ? n0(e.sale) : '-', '판매', e ? py(e.sale, e.pSale, n0) : ''),
+    kpi(e ? pct(e.rate) : '-', '판매율', e ? py(e.rate, e.pRate, pct, false) : ''),
+  ].join('');
+  dash(`${mast(`<u style="background:${catColor[c]}"></u>${SEASON} · ${c}`, `${c} 반응도`, `4분면 기준: 종합 ${WARN.toFixed(1)} · 판매율 ${pct(qd.cut)} (조사 상품 중앙값 ${pct(qd.medRate)} × ${RATE_UP.toFixed(1)})<br>평가된 상품 ${qd.rated.length}개 분류 · 입고·판매는 카테고리 전체(판매 시스템 기준)`)}
   <div class="kpis k7">${kp}</div>
   <div class="gc">
    <div class="lc"><div class="bx"><h3>세부 복종 종합점수 (상품 수)</h3>${hbars(subs, { rowH: 10.5, gap: 4.2, w: 340 })}</div><div class="bx"><h3>종합점수(가로) × 판매율(세로)</h3>${scatter(qd, 340, 175)}</div></div>
@@ -372,9 +406,9 @@ h3{margin:0 0 1.8mm;font-size:9.5pt;font-weight:700;color:var(--navy2)}
 .mast span{display:block;font-size:7.5pt;letter-spacing:.12em;color:var(--gold);font-weight:500}.mast h1{margin:1mm 0 0;font-size:17pt;font-weight:700;letter-spacing:-.01em}
 .mast .meta{font-size:7.5pt;color:#c6d0df;text-align:right;line-height:1.5}.mast u{display:inline-block;width:2.4mm;height:2.4mm;border-radius:50%;margin-right:1.6mm;vertical-align:0}
 .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:2.6mm}.kpis.k7{grid-template-columns:repeat(7,1fr)}
-.kp{border:.5pt solid var(--line);border-radius:1.6mm;padding:2mm 3mm;background:#fff}.kp small{display:block;font-size:7.2pt;color:var(--mut)}.kp b{display:inline-block;font-size:16pt;font-weight:700;font-variant-numeric:tabular-nums;color:var(--navy2);line-height:1.2}.kp b i{font-style:normal;font-size:10pt;color:var(--mut);font-weight:400}.kp em{display:block;font-style:normal;font-size:7pt;color:var(--mut)}
+.kp{border:.5pt solid var(--line);border-radius:1.6mm;padding:2mm 3mm;background:#fff}.kp small{display:block;font-size:7.2pt;color:var(--mut)}.kp b{display:inline-block;font-size:16pt;font-weight:700;font-variant-numeric:tabular-nums;color:var(--navy2);line-height:1.2}.kp b i{font-style:normal;font-size:10pt;color:var(--mut);font-weight:400}.kp em{display:block;font-style:normal;font-size:6.9pt;color:var(--mut);line-height:1.3;white-space:nowrap}
 .kp b.hl,.kp b.hw{padding:0 1.6mm;border-radius:1mm}
-.g3{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:3.2mm;flex:1;min-height:0}.g2{display:grid;grid-template-columns:1fr 1fr;gap:3.2mm;flex:1;min-height:0}.g4{display:grid;grid-template-columns:1fr 1fr;gap:3mm;flex:1;min-height:0}
+.g3{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:3.2mm;flex:1;min-height:0}.g6{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:3.2mm;flex:1;min-height:0}.g6 .bx{display:flex;flex-direction:column}.g2{display:grid;grid-template-columns:1fr 1fr;gap:3.2mm;flex:1;min-height:0}.g4{display:grid;grid-template-columns:1fr 1fr;gap:3mm;flex:1;min-height:0}
 .bx{border:.5pt solid var(--line);border-radius:1.6mm;padding:3mm 3.5mm;min-width:0;overflow:hidden}
 .note{font-size:7.5pt;color:var(--mut)}.sw{display:inline-block;width:2.6mm;height:2.6mm;border-radius:.6mm;vertical-align:-.4mm}.sw.hl{background:var(--lowbg)}.sw.hw{background:var(--warnbg)}
 .hm{display:grid;grid-template-columns:16mm repeat(3,1fr);gap:1mm;font-size:8.5pt;text-align:center}.hm.c5{grid-template-columns:14mm repeat(4,1fr)}.hm .hd{color:var(--mut);font-size:7.5pt;padding:.6mm 0}.hm .rl{text-align:left;color:var(--mut);font-size:7.8pt;padding:1.6mm 0}
@@ -387,7 +421,7 @@ em.hl,em.hw,em.ho,em.hh,em.h0{font-style:normal;padding:0 1mm;border-radius:.8mm
 .qb{border:.5pt solid var(--line);border-radius:1.6mm;padding:2.4mm 3mm;overflow:hidden;min-width:0}.qh{border-left:1.2mm solid;padding-left:2mm;margin-bottom:1.6mm;line-height:1.25}.qh b{font-size:9.5pt;display:block}.qh span{font-size:7pt;color:var(--mut)}
 .it{display:grid;grid-template-columns:9.5mm 1fr;gap:2mm;align-items:center;padding:.9mm 0;border-top:.5pt solid #f0f1f4}.th{width:9.5mm;height:11mm;border:.5pt solid var(--line);display:grid;place-items:center;overflow:hidden;background:#fff}.th img{width:100%;height:100%;object-fit:contain}.th i{font-size:6pt;color:#b0b5c0;font-style:normal}
 .tx{min-width:0;display:grid}.tx b{font-size:8pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tx span{font-size:7pt;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tx small{font-size:7pt;color:#4a5263;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tx u{display:inline-block;width:1.8mm;height:1.8mm;border-radius:50%;margin-right:1mm}
-.sr{display:grid;grid-template-columns:18mm 1fr 30mm;gap:2mm;align-items:center;margin-bottom:1.6mm;font-size:8pt}.sr span u{display:inline-block;width:2mm;height:2mm;border-radius:50%;margin-right:1.2mm}.bar2{position:relative;height:3mm;background:#f1f3f7;border-radius:1mm}.bar2 i{position:absolute;left:0;top:0;bottom:0;border-radius:1mm}.bar2 i+i{height:1.2mm;top:.9mm;opacity:1}.sr em{font-style:normal;font-size:7pt;color:var(--mut);text-align:right;line-height:1.2}.sr em b{display:block;color:var(--navy2);font-size:8pt}
+.sr{display:grid;grid-template-columns:18mm 1fr 30mm;gap:2mm;align-items:center;margin-bottom:1.6mm;font-size:8pt}.sr span u{display:inline-block;width:2mm;height:2mm;border-radius:50%;margin-right:1.2mm}.bar2{position:relative;height:3mm;background:#f1f3f7;border-radius:1mm}.bar2 i{position:absolute;left:0;top:0;bottom:0;border-radius:1mm}.bar2 i+i{height:1.2mm;top:.9mm;opacity:1}.sr em .py{display:block;font-weight:400;font-size:6.8pt;color:var(--mut)}.subm{margin-top:1.4mm;font-size:7pt;color:#c6d0df}.subm span{margin-left:2.4mm}.subm b{color:#fff;font-weight:500}.sr em{font-style:normal;font-size:7pt;color:var(--mut);text-align:right;line-height:1.2}.sr em b{display:block;color:var(--navy2);font-size:8pt}
 .empty{color:#9aa0ab;font-size:7.8pt;padding:2mm 0}
 .qt{font-size:8pt;border-left:.8mm solid var(--mist);padding:.6mm 0 .6mm 2.4mm;margin-bottom:1.6mm}.qt b{color:var(--navy2)}
 .pgh{font-weight:700;font-size:9pt;margin:1.4mm 0 .4mm;color:var(--navy2);border-bottom:.5pt solid var(--line);padding-bottom:.6mm}.pgh u{display:inline-block;width:2.4mm;height:2.4mm;border-radius:50%;margin-right:1.6mm}
@@ -413,11 +447,11 @@ const wrap = (title, pagesArr) => `<!doctype html><html lang="ko"><head><meta ch
 const outDir = join(ROOT, 'reports', SEASON); mkdirSync(outDir, { recursive: true });
 const outMain = join(outDir, `취합리포트_${today}.html`), outApp = join(outDir, `취합리포트_부록_${today}.html`);
 writeFileSync(outMain, wrap(`${SEASON} 매장 반응도 조사 취합 리포트`, mainPages));
-writeFileSync(outApp, wrap(`${SEASON} 매장 반응도 조사 취합 리포트 · 부록`, appPages));
+if (!flag('main-only')) writeFileSync(outApp, wrap(`${SEASON} 매장 반응도 조사 취합 리포트 · 부록`, appPages));
 console.log(`리포트 생성: ${outMain}\n부록: ${outApp}\n  제출 ${storeCount}/${stores.length}개 매장 · 상품평가 ${PR.length}건 · 가격 ${PC.length}건 · 경쟁브랜드 ${CP.length}건 · 본문 ${mainPages.length}페이지 + 부록 ${appPages.length}개 섹션`);
 
 if (flag('pdf')) {
   const chrome = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(existsSync);
   if (!chrome) console.log('Chrome 을 찾지 못해 PDF 는 건너뜁니다. HTML 을 열어 인쇄 > PDF 로 저장하세요.');
-  else for (const f of [outMain, outApp]) { const pdf = f.replace(/\.html$/, '.pdf'); execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-pdf-header-footer', '--virtual-time-budget=8000', `--print-to-pdf=${pdf}`, 'file:///' + resolve(f).replace(/\\/g, '/')], { stdio: 'ignore' }); console.log('PDF:', pdf); }
+  else for (const f of flag('main-only') ? [outMain] : [outMain, outApp]) { const pdf = f.replace(/\.html$/, '.pdf'); execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-pdf-header-footer', '--virtual-time-budget=8000', `--print-to-pdf=${pdf}`, 'file:///' + resolve(f).replace(/\\/g, '/')], { stdio: 'ignore' }); console.log('PDF:', pdf); }
 }
