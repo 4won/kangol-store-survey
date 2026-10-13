@@ -64,3 +64,12 @@ node tools/build_data.mjs --stores "C:/Users/-/Downloads/매장리스트_현재.
 
 ## 다음 시즌
 `26AW/` 는 그대로 두고(아카이브), 새 시즌은 `node tools/build_data.mjs --season 27SS --hub ... --stores ...` 로 `27SS/` 폴더를 생성합니다. 루트 `index.html` 의 이동 주소와 `config.js` 의 시즌·endpoint 를 갱신하세요. (시즌마다 새 구글시트를 쓰면 raw 가 시즌별로 분리됩니다.) 접속 주소는 `https://4won.github.io/kangol-store-survey/26AW/` 형태입니다.
+
+## 취합 리포트 (A4 가로 HTML → PDF)
+```bash
+node tools/build_report.mjs --pdf     # reports/26AW/취합리포트_{날짜}.html / .pdf
+```
+- 응답은 구글시트 raw 탭(최신=Y)에서, 입고·판매·판매율은 허브 productmap(최신 주차)에서 읽어 품번으로 결합합니다.
+- 시트 ID 는 `reports/sheet.txt` 에 보관(공개 저장소에 올리지 않음). 시트는 "링크가 있는 모든 사용자: 보기" 여야 읽힙니다.
+- 판매 수치가 들어가므로 `reports/` 는 git 에 올리지 않습니다(.gitignore).
+- 구성: 요약 → 복종별 상품 취합(가방/의류/모자) → 가격 적정선 → 채널별 비교 → 경쟁브랜드 → 시즌 의견 → 부록(매장별 1페이지~). 점수 2.5 미만 빨강, 3.0 미만 주황.
