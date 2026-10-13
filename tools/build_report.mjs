@@ -377,15 +377,30 @@ for (const c of CATS) {
   dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '가격 적정선', '막대: 매장이 제시한 적정 가격대(중앙값) · 선: 현재 판매가 범위 · 점: 판매가 중앙값')}<div class="prs">${rows}</div>`, 'p6');
 }
 
-// ---- P7 경쟁브랜드
+// ---- P7 경쟁브랜드 (클릭하면 매장 의견 상세)
+const brandTpl = [];
+function brandHtml(g, l) {
+  const stores = [...new Set(l.map(r => r['매장명']))];
+  const names = [...new Set(l.map(r => r['브랜드'].trim()))];
+  const byCh = CHANNELS.map(ch => ({ ch, n: new Set(l.filter(r => channelOf(r['매장명']) === ch).map(r => r['매장명'])).size })).filter(x => x.n);
+  const tally = k => { const m = new Map(); l.forEach(r => { const v = clean(r[k]).trim(); if (!v) return; if (!m.has(v)) m.set(v, new Set()); m.get(v).add(r['매장명']); }); return [...m.entries()].map(([v, st]) => ({ v, n: st.size })).sort((a, b) => b.n - a.n); };
+  const box = (t, k) => `<div class="dbox"><h4>${t}</h4>${tally(k).map(x => `<div class="bl"><span>${esc(x.v)}</span><b>${x.n}곳</b></div>`).join('') || '<span class="mut">응답 없음</span>'}</div>`;
+  const rows = l.slice().sort((a, b) => CHANNELS.indexOf(channelOf(a['매장명'])) - CHANNELS.indexOf(channelOf(b['매장명'])) || a['매장명'].localeCompare(b['매장명'], 'ko')).map(r => `<tr><td>${esc(r['매장명'])}</td><td>${chLabel(channelOf(r['매장명']))}</td><td>${esc(clean(r['가격대']))}</td><td>${esc(clean(r['강점']))}</td><td>${esc(clean(r['프로모션·동향']))}</td><td>${esc(clean(r['고객반응']))}</td></tr>`).join('');
+  return `<div class="dd"><div class="dcat"><u style="background:${C.navy}"></u>${g} 경쟁브랜드</div><h2>${esc(names[0])}</h2>
+  <div class="dm"><span class="tag g">${stores.length}개 매장 언급</span>${byCh.map(x => `<span class="tag">${chLabel(x.ch)} ${x.n}</span>`).join('')}${names.length > 1 ? `<span class="tag c">표기: ${names.map(esc).join(' / ')}</span>` : ''}</div>
+  <div class="bgrid">${box('가격대', '가격대')}${box('강점', '강점')}${box('프로모션·동향', '프로모션·동향')}${box('고객 반응', '고객반응')}</div>
+  <div class="dbox" style="margin-top:12px"><h4>매장별 의견 (${l.length}건)</h4><table class="bt"><thead><tr><th>매장</th><th>채널</th><th>가격대</th><th>강점</th><th>프로모션·동향</th><th>고객 반응</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
 {
   const col = g => {
     const rs = CP.filter(r => r['복종'] === g && r['브랜드']), by = {};
     rs.forEach(r => (by[r['브랜드'].trim().toLowerCase()] ||= []).push(r));
-    const rank = Object.values(by).map(l => ({ l, n: new Set(l.map(r => r['매장명'])).size })).sort((a, b) => b.n - a.n).slice(0, 5), mx = Math.max(1, ...rank.map(x => x.n));
-    return `<div class="bx"><h3>${g} 대표 경쟁브랜드 <span class="mut">언급 매장 수 순</span></h3>` + (rank.map(({ l, n }, i) => { const j = k => [...new Set(l.map(r => clean(r[k])).filter(Boolean))].map(esc).join(' / '); return `<div class="cp"><div class="cpt"><span class="rk">${i + 1}</span><b>${esc(l[0]['브랜드'])}</b><div class="bar"><i style="width:${(n / mx) * 100}%"></i></div><em>${n}개 매장</em></div><dl><dt>가격대</dt><dd>${j('가격대') || '-'}</dd><dt>강점</dt><dd>${j('강점') || '-'}</dd><dt>동향</dt><dd>${j('프로모션·동향') || '-'}</dd><dt>고객 반응</dt><dd>${j('고객반응') || '-'}</dd></dl></div>`; }).join('') || '<div class="empty">응답 없음</div>') + '</div>';
+    const all = Object.values(by).map(l => ({ l, n: new Set(l.map(r => r['매장명'])).size })).sort((a, b) => b.n - a.n || a.l[0]['브랜드'].localeCompare(b.l[0]['브랜드'], 'ko'));
+    all.forEach((x, i) => { x.id = (g === '의류' ? 'a' : 'b') + i; brandTpl.push(`<template id="b-${x.id}">${brandHtml(g, x.l)}</template>`); });
+    const top = all.slice(0, 5), rest = all.slice(5, 17), mx = Math.max(1, ...top.map(x => x.n));
+    return `<div class="bx"><h3>${g} 대표 경쟁브랜드 <span class="mut">언급 매장 수 순</span><span class="so mut"> · 클릭하면 매장 의견 상세</span></h3>` + (top.map(({ l, n, id }, i) => { const j = k => [...new Set(l.map(r => clean(r[k])).filter(Boolean))].map(esc).join(' / '); return `<div class="cp" data-brand="${id}"><div class="cpt"><span class="rk">${i + 1}</span><b>${esc(l[0]['브랜드'])}</b><div class="bar"><i style="width:${(n / mx) * 100}%"></i></div><em>${n}개 매장</em></div><dl><dt>가격대</dt><dd>${j('가격대') || '-'}</dd><dt>강점</dt><dd>${j('강점') || '-'}</dd><dt>동향</dt><dd>${j('프로모션·동향') || '-'}</dd><dt>고객 반응</dt><dd>${j('고객반응') || '-'}</dd></dl></div>`; }).join('') || '<div class="empty">응답 없음</div>') + (rest.length ? `<div class="rest"><small>그 외 언급 브랜드 ${all.length - 5}개${all.length > 17 ? ' (상위 12개 표시)' : ''}</small><div class="kws">${rest.map(x => `<span class="kw neu" data-brand="${x.id}">${esc(x.l[0]['브랜드'])} ${x.n}</span>`).join('')}</div></div>` : '') + '</div>';
   };
-  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '경쟁브랜드 현황', '매장이 꼽은 대표 경쟁브랜드 (의류·가방 각 2곳)')}<div class="g2">${col('의류')}${col('가방')}</div>`, 'p7');
+  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '경쟁브랜드 현황', '매장이 꼽은 대표 경쟁브랜드 (의류·가방 각 2곳)<span class="so"><br>브랜드를 클릭하면 매장별 의견을 자세히 볼 수 있습니다</span>')}<div class="g2">${col('의류')}${col('가방')}</div>`, 'p7');
 }
 
 // ---- P8 상품 4분면 (전 카테고리)
@@ -397,6 +412,19 @@ for (const c of CATS) {
   dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '상품 4분면 · 디자인 × 가격', `디자인 · 가격 점수 각 ${WARN.toFixed(1)} 기준<br>전체 ${tot}개 평가 상품`)}
   <div class="g4">${QDEF.map(d => quadBox(d, merged[d.k], 6, true, merged[d.k].length)).join('')}</div>
   <div class="note"><u class="dt" style="background:${C.bag}"></u>가방 <u class="dt" style="background:${C.cloth}"></u>의류 <u class="dt" style="background:${C.hat}"></u>모자 · 각 칸은 해당 구간에서 점수 차이가 큰 순서 · 상품별 상세와 매장별 의견은 부록에 있습니다</div>`, 'p8');
+}
+
+// ---- P9 전 상품 리스트 (8페이지 이후, 행을 클릭하면 상세)
+{
+  const dsc = (a, b) => (b.comp ?? -1) - (a.comp ?? -1);
+  let body = `<div class="so lsearch"><input id="pq" type="search" placeholder="상품명·품번 검색 (화면에서만 동작)"></div><table class="allp"><thead><tr><th></th><th>품번</th><th>상품명</th><th>세부 복종</th><th class="n">판매가</th><th>등급</th><th class="n">입고</th><th class="n">판매</th><th class="n">판매율</th><th class="n">응답</th><th class="n">디자인</th><th class="n">가격</th><th class="n">종합</th><th class="n">미입점</th></tr></thead>`;
+  for (const c of CATS) {
+    const list = products.filter(p => p.cat === c).sort((a, b) => a.sub.localeCompare(b.sub, 'ko') || dsc(a, b));
+    body += `<tbody><tr class="grp"><td colspan="14"><u class="dt" style="background:${catColor[c]};margin:0 1.4mm 0 0"></u>${c} · ${list.length}개</td></tr>`;
+    for (const p of list) body += `<tr data-no="${esc(p.no)}" class="${p.n ? '' : 'none'}"><td class="im">${p.img ? `<img src="../../${SEASON}/${p.img}" alt="">` : ''}</td><td>${esc(p.no)}</td><td><b>${esc(p.name)}</b></td><td>${esc(p.sub)}</td><td class="n">${n0(p.price)}</td><td>${esc(p.grade || '')}</td><td class="n">${n0(p.inbound)}</td><td class="n">${n0(p.sales)}</td><td class="n">${pct(p.rate)}</td><td class="n">${p.n || '-'}</td>${sc(p.design)}${sc(p.pscore)}${sc(p.comp)}<td class="n">${p.notIn || ''}</td></tr>`;
+    body += '</tbody>';
+  }
+  page('전 상품 리스트', `<div class="sub">출고된 ${SEASON} 상품 ${products.length}개 · 카테고리 → 세부 복종 순, 같은 복종 안에서는 종합점수 높은 순 · 점수는 ${LOW.toFixed(1)} 미만 빨강, ${WARN.toFixed(1)} 미만 주황<span class="so"> · 행을 클릭하면 상품 상세가 열립니다</span></div>${body}</table>`, 'flow', 'main');
 }
 
 // ---- 상품 상세 (HTML 전용, 상품 클릭 시 팝업)
@@ -426,8 +454,8 @@ function detailHtml(p) {
    <div class="dbox"><h4>매장 의견 종합</h4><p class="dsay">${say}</p><div class="dkw">${kws.map(k => chip(k)).join('') || '<span class="mut">반복 키워드 없음</span>'}${p.notIn ? `<span class="kw st">미입점·미입고 ${p.notIn}</span>` : ''}</div>${cm ? `<h4 style="margin-top:12px">매장 한줄평 (${p.comments.length}건)</h4><ul class="dcm">${cm}</ul>` : ''}</div>
   </div></div>`;
 }
-const detailTemplates = products.map(p => `<template id="d-${esc(p.no)}">${detailHtml(p)}</template>`).join('');
-const modalHtml = `<div class="modal" id="modal" hidden><div class="mp"><button class="mx" type="button" aria-label="닫기">×</button><div id="mbody"></div></div></div>${detailTemplates}<script>(function(){var m=document.getElementById('modal'),b=document.getElementById('mbody');function close(){m.hidden=true;document.body.style.overflow=''}document.addEventListener('click',function(e){var it=e.target.closest('[data-no]');if(it){var t=document.getElementById('d-'+it.getAttribute('data-no'));if(t){b.innerHTML=t.innerHTML;m.hidden=false;document.body.style.overflow='hidden';m.querySelector('.mp').scrollTop=0}return}if(e.target===m||e.target.closest('.mx'))close()});document.addEventListener('keydown',function(e){if(e.key==='Escape')close()})})();<\/script>`;
+const detailTemplates = products.map(p => `<template id="d-${esc(p.no)}">${detailHtml(p)}</template>`).join('') + brandTpl.join('');
+const modalHtml = `<div class="modal" id="modal" hidden><div class="mp"><button class="mx" type="button" aria-label="닫기">×</button><div id="mbody"></div></div></div>${detailTemplates}<script>(function(){var m=document.getElementById('modal'),b=document.getElementById('mbody');function close(){m.hidden=true;document.body.style.overflow=''}document.addEventListener('click',function(e){var it=e.target.closest('[data-no],[data-brand]');if(it){var id=it.hasAttribute('data-no')?'d-'+it.getAttribute('data-no'):'b-'+it.getAttribute('data-brand');var t=document.getElementById(id);if(t){b.innerHTML=t.innerHTML;m.hidden=false;document.body.style.overflow='hidden';m.querySelector('.mp').scrollTop=0}return}if(e.target===m||e.target.closest('.mx'))close()});document.addEventListener('keydown',function(e){if(e.key==='Escape')close()});var q=document.getElementById('pq');if(q)q.addEventListener('input',function(){var v=q.value.trim().toLowerCase();document.querySelectorAll('table.allp tbody tr[data-no]').forEach(function(tr){tr.hidden=!!v&&tr.textContent.toLowerCase().indexOf(v)<0})})})();<\/script>`;
 
 /* ---------- HTML ---------- */
 const css = `
@@ -476,6 +504,11 @@ em.hl,em.hw,em.ho,em.hh,em.h0{font-style:normal;padding:0 1mm;border-radius:.8mm
 .dd table{font-size:12px}.dsay{margin:0 0 8px;font-size:13px}.dkw{display:flex;flex-wrap:wrap;gap:6px}.dd .kw{font-size:12px;padding:2px 10px}
 .dcm{margin:0;padding:0;list-style:none;font-size:12px}.dcm li{padding:4px 0;border-top:1px solid #f0f1f4}.dcm b{color:var(--navy2);margin-right:6px}
 @media (max-width:760px){.dd .dh,.dgrid{grid-template-columns:1fr}.dcards{grid-template-columns:1fr 1fr}}
+.cp[data-brand],.kw[data-brand],table.allp tr[data-no]{cursor:pointer}.cp[data-brand]:hover,table.allp tr[data-no]:hover td{background:#f7f8fb}.kw[data-brand]:hover{background:#dfe6ef}
+.rest{margin-top:2mm;border-top:.5pt solid #f0f1f4;padding-top:1.6mm}.rest small{font-size:7.2pt;color:var(--mut)}.rest .kw{font-size:7.2pt;padding:.3mm 1.8mm}
+.lsearch{display:block;margin-bottom:2mm}.lsearch input{width:100%;max-width:90mm;font:inherit;font-size:9pt;padding:1.4mm 2.4mm;border:.5pt solid var(--line);border-radius:1.4mm}
+table.allp{font-size:7.4pt}table.allp td{vertical-align:middle;padding:.5mm 1.4mm}table.allp td.im{width:10mm;padding:.4mm .8mm}table.allp td.im img{display:block;width:8.6mm;height:9mm;object-fit:contain}table.allp tr[hidden]{display:none}
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.bl{overflow-wrap:anywhere;display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0;border-top:1px solid #f0f1f4}.bl b{font-weight:500;color:var(--navy2);white-space:nowrap}.bt{font-size:12px}.bt td{vertical-align:top;overflow-wrap:anywhere}
 .empty{color:#9aa0ab;font-size:7.8pt;padding:2mm 0}
 .qt{font-size:8pt;border-left:.8mm solid var(--mist);padding:.6mm 0 .6mm 2.4mm;margin-bottom:1.6mm}.qt b{color:var(--navy2)}
 .pgh{font-weight:700;font-size:9pt;margin:1.4mm 0 .4mm;color:var(--navy2);border-bottom:.5pt solid var(--line);padding-bottom:.6mm}.pgh u{display:inline-block;width:2.4mm;height:2.4mm;border-radius:50%;margin-right:1.6mm}
@@ -493,8 +526,8 @@ td.cm{font-size:7.5pt;min-width:60mm}td.cm div{margin-bottom:.6mm}td.low,.low{ba
 .kpis.small{margin:2mm 0 3mm}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm}.three p{margin:0 0 1mm;font-size:8pt}.two{display:grid;grid-template-columns:1fr 1fr;gap:6mm}
 .kpi{border:.5pt solid var(--line);padding:2mm 3mm}.kpi b{display:block;font-size:13pt}.kpi span{font-size:7.5pt;color:var(--mut)}
 .tagr{background:var(--lowbg);color:var(--lowfg);padding:0 1.5mm;font-weight:700;white-space:nowrap}.tagb{background:var(--okbg);color:var(--okfg);padding:0 1.5mm;font-weight:700;white-space:nowrap}.tagg{background:#e1ece6;color:#2c5f46;padding:0 1.5mm;font-weight:700;white-space:nowrap}.nw{white-space:nowrap}
-@page{size:A4 landscape;margin:0}
-@media print{.modal,template{display:none!important}.so{display:none}.it{cursor:auto}body{background:#fff}.pg{width:297mm;min-height:210mm;margin:0;box-shadow:none;break-after:page}.pg:last-child{break-after:auto}.pg.dash{height:210mm}}
+@page dash{size:A4 landscape;margin:0}@page flow{size:A4 landscape;margin:8mm 8mm 12mm}.pg.dash{page:dash}.pg.flow{page:flow}
+@media print{.modal,template{display:none!important}.so{display:none}.it{cursor:auto}body{background:#fff}.pg{width:297mm;min-height:210mm;margin:0;box-shadow:none;break-after:page}.pg:last-child{break-after:auto}.pg.dash{height:210mm}.pg.flow{width:auto;min-height:0;padding:0}}
 `;
 const fontLink = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Sans:wght@400;500;700&display=swap">';
 const wrap = (title, pagesArr, extra = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${title}</title>${fontLink}<style>${css}</style></head><body>${pagesArr.join('\n')}${extra}</body></html>`;
