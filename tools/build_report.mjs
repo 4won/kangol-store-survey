@@ -48,9 +48,11 @@ async function tab(name) {
 const num = v => { const n = Number(String(v ?? '').replace(/,/g, '')); return v === '' || v == null || isNaN(n) ? null : n; };
 const latest = rows => rows.filter(r => r['최신'] === 'Y');
 
-const [S, PR, PC, CP] = [await tab('시즌응답'), await tab('상품평가'), await tab('가격적정선'), await tab('경쟁브랜드')].map(latest);
+const [S, PR0, PC, CP] = [await tab('시즌응답'), await tab('상품평가'), await tab('가격적정선'), await tab('경쟁브랜드')].map(latest);
 const stores = JSON.parse(readFileSync(join(ROOT, SEASON, 'data/stores.json'), 'utf8'));
 const prodList = JSON.parse(readFileSync(join(ROOT, SEASON, 'data/products.json'), 'utf8'));
+const knownNo = new Set(prodList.items.map(p => p.no));
+const PR = PR0.filter(r => knownNo.has(r['품번']));     // 제외 상품(설문 목록에 없는 품번)의 응답은 집계에서 뺌
 const index = JSON.parse(readFileSync(join(HUB, 'data/summary/index.json'), 'utf8'));
 const pmWeek = arg('week', index.latest);
 const pm = JSON.parse(readFileSync(join(HUB, 'data/summary/productmap', pmWeek + '.json'), 'utf8'));
@@ -236,10 +238,10 @@ const scoreRows = groups => groups.flatMap(g => [
 ]);
 // 4분면 분류 (종합점수 3.0 / 판매율 복종 중앙값)
 const QDEF = [
-  { k: 'HH', t: '점수 높음 · 판매율 높음', h: '유지·확대', col: C.good },
-  { k: 'HL', t: '점수 높음 · 판매율 낮음', h: '노출·프로모션 점검', col: C.brass },
-  { k: 'LH', t: '점수 낮음 · 판매율 높음', h: '개선 후 확대', col: C.steel },
-  { k: 'LL', t: '점수 낮음 · 판매율 낮음', h: '소진·정리 검토', col: C.low },
+  { k: 'HH', h: '점수 ↑ · 판매율 ↑', col: C.good },
+  { k: 'HL', h: '점수 ↑ · 판매율 ↓', col: C.brass },
+  { k: 'LH', h: '점수 ↓ · 판매율 ↑', col: C.steel },
+  { k: 'LL', h: '점수 ↓ · 판매율 ↓', col: C.low },
 ];
 function quadrants(cat) {
   const all = products.filter(p => !cat || p.cat === cat), medRate = med(all.map(p => p.rate)), cut0 = medRate * RATE_UP;
@@ -255,7 +257,7 @@ function itemRow(p, showCat) {
   return `<div class="it"><div class="th">${thumb(p)}</div><div class="tx"><b>${esc(p.name)}</b><span>${showCat ? `<u style="background:${catColor[p.cat]}"></u>` : ''}${esc(p.no)} · 종합 <em class="${heat(p.comp)}">${p.comp.toFixed(1)}</em> · 판매율 ${pct(p.rate)}</span>${cm ? `<small>${esc(cm)}</small>` : ''}</div></div>`;
 }
 function quadBox(d, list, n, showCat, total) {
-  return `<div class="qb"><div class="qh" style="border-color:${d.col}"><b style="color:${d.col}">${d.h}</b><span>${d.t} · ${total}개</span></div>${list.slice(0, n).map(p => itemRow(p, showCat)).join('') || '<div class="empty">해당 상품 없음</div>'}</div>`;
+  return `<div class="qb"><div class="qh" style="border-color:${d.col}"><b style="color:${d.col}">${d.h}</b><span>${total}개 상품</span></div>${list.slice(0, n).map(p => itemRow(p, showCat)).join('') || '<div class="empty">해당 상품 없음</div>'}</div>`;
 }
 function scatter(qd, w = 330, h = 190) {
   const pts = qd.rated, pad = { l: 34, r: 8, t: 8, b: 26 };
@@ -267,7 +269,7 @@ function scatter(qd, w = 330, h = 190) {
   for (let v = 2; v <= 5; v++) g += `<text x="${X(v)}" y="${h - pad.b + 11}" font-size="8.5" text-anchor="middle" fill="#6b7385">${v}</text>`;
   for (let i = 0; i <= 3; i++) { const v = (ymax * i) / 3; g += `<text x="${pad.l - 4}" y="${Y(v) + 3}" font-size="8.5" text-anchor="end" fill="#6b7385">${(v * 100).toFixed(0)}%</text>`; }
   g += `<text x="${(pad.l + w - pad.r) / 2}" y="${h - 3}" font-size="9" text-anchor="middle" fill="#6b7385">종합점수 (디자인 60 : 가격 40)</text>`;
-  g += `<text x="${pad.l + 3}" y="${pad.t + 10}" font-size="8.5" fill="#5f6b80">개선 후 확대</text><text x="${w - pad.r - 3}" y="${pad.t + 10}" font-size="8.5" fill="${C.good}" text-anchor="end">유지·확대</text><text x="${pad.l + 3}" y="${h - pad.b - 4}" font-size="8.5" fill="${C.low}">소진·정리</text><text x="${w - pad.r - 3}" y="${h - pad.b - 4}" font-size="8.5" fill="${C.brass}" text-anchor="end">노출 점검</text>`;
+  g += `<text x="${pad.l + 3}" y="${pad.t + 10}" font-size="8.5" fill="#5f6b80">점수 ↓ 판매율 ↑</text><text x="${w - pad.r - 3}" y="${pad.t + 10}" font-size="8.5" fill="${C.good}" text-anchor="end">점수 ↑ 판매율 ↑</text><text x="${pad.l + 3}" y="${h - pad.b - 4}" font-size="8.5" fill="${C.low}">점수 ↓ 판매율 ↓</text><text x="${w - pad.r - 3}" y="${h - pad.b - 4}" font-size="8.5" fill="${C.brass}" text-anchor="end">점수 ↑ 판매율 ↓</text>`;
   for (const p of pts) {
     const d = QDEF.find(q => (q.k[0] === 'H') === (p.comp >= WARN) && (q.k[1] === 'H') === (p.rate >= qd.cut));
     g += `<circle cx="${X(Math.min(xmax, Math.max(xmin, p.comp))).toFixed(1)}" cy="${Y(p.rate).toFixed(1)}" r="3.6" fill="${d.col}" stroke="#fff" stroke-width="1.2"/>`;
@@ -387,7 +389,7 @@ for (const c of CATS) {
   for (const c of CATS) { const q = quadrants(c); for (const k in merged) merged[k].push(...q.q[k].map(p => ({ ...p, _rel: 0 }))); }
   const order = { HH: p => p.comp, HL: p => p.comp - (p.rate || 0) * 5, LH: p => -p.comp + (p.rate || 0) * 5, LL: p => -p.comp - (p.rate || 0) * 5 };
   for (const k in merged) merged[k].sort((a, b) => order[k](b) - order[k](a));
-  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '점검 우선순위 · 상품 4분면', `종합 ${WARN.toFixed(1)} · 판매율은 복종별 중앙값 기준<br>전체 ${qa.rated.length}개 평가 상품`)}
+  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '상품 4분면 · 점수 × 판매율', `종합 ${WARN.toFixed(1)} · 판매율은 카테고리별 기준 (중앙값 × ${RATE_UP.toFixed(1)})<br>전체 ${qa.rated.length}개 평가 상품`)}
   <div class="g4">${QDEF.map(d => quadBox(d, merged[d.k], 6, true, merged[d.k].length)).join('')}</div>
   <div class="note"><u class="dt" style="background:${C.bag}"></u>가방 <u class="dt" style="background:${C.cloth}"></u>의류 <u class="dt" style="background:${C.hat}"></u>모자 · 상품별 상세와 매장별 의견은 부록에 있습니다</div>`, 'p8');
 }
