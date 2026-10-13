@@ -26,6 +26,7 @@ jobs:
           cp index.html _site/
           for d in [0-9][0-9][AS][WS]; do [ -d "$d" ] && cp -r "$d" _site/; done
           touch _site/.nojekyll
+          printf 'User-agent: *\nDisallow: /\n' > _site/robots.txt
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
