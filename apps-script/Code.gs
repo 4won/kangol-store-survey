@@ -13,12 +13,15 @@
 const HEADERS = {
   '시즌응답':   ['제출ID', '최신', '제출일시', '시즌', '채널형태', '채널계열', '매장명', '전체만족도', '상품구성', '물량·입고', '고객반응', '잘된점', '아쉬운점', '기타의견', '경쟁환경의견'],
   '상품평가':   ['제출ID', '최신', '제출일시', '채널형태', '채널계열', '매장명', '복종', '세부복종', '품번', '상품명', '판매가', '등급', '디자인', '가격', '한줄평'],
-  '가격적정선': ['제출ID', '최신', '제출일시', '채널형태', '채널계열', '매장명', '복종', '적정하한', '적정상한', '현재가수준', '경쟁대비', '비교기준', '의견'],
-  '경쟁브랜드': ['제출ID', '최신', '제출일시', '채널형태', '채널계열', '매장명', '브랜드', '주력복종', '가격대', '위치·규모', '강점', '프로모션·동향', '고객반응'],
+  '가격적정선': ['제출ID', '최신', '제출일시', '채널형태', '채널계열', '매장명', '복종', '세부복종', '적정하한', '적정상한', '현재가수준', '경쟁대비', '의견'],
+  '경쟁브랜드': ['제출ID', '최신', '제출일시', '채널형태', '채널계열', '매장명', '복종', '브랜드', '가격대', '강점', '프로모션·동향', '고객반응'],
   '원본JSON':   ['제출ID', '제출일시', '매장명', 'JSON'],
 };
 const STORE_COL = { '시즌응답': 7, '상품평가': 6, '가격적정선': 6, '경쟁브랜드': 6 };  // 1-based 매장명 열
 const CATS = ['가방', '의류', '모자'];
+const PRICE_SUBS = [['가방', '토트백'], ['가방', '크로스백'], ['가방', '백팩'],
+  ['의류', '긴소매티셔츠'], ['의류', '라운드티셔츠'], ['의류', '집업'], ['의류', '바지'], ['의류', '자켓'], ['의류', '후드티셔츠'], ['의류', '셔츠'], ['의류', '니트'],
+  ['모자', '벙거지'], ['모자', '야구모자']];   // 설문 페이지의 PSUBS 와 같아야 함
 
 function doGet() { return out_({ ok: true, msg: 'store survey endpoint' }); }
 
@@ -41,9 +44,8 @@ function doPost(e) {
     const q = d.seasonQ || {};
     append_(ss, '시즌응답', [base.concat([d.season], st3, [q.overall, q.assort, q.timing, q.cust, q.good, q.bad, q.free, d.extra]).map(c)]);
     append_(ss, '상품평가', (d.products || []).map(p => base.concat(st3, [p.cat, p.sub, p.no, p.name, p.price, p.grade, p.design, p.price_score, p.comment]).map(c)));
-    const pr = d.prices || {};
-    append_(ss, '가격적정선', CATS.filter(k => pr[k] && Object.keys(pr[k]).length).map(k => base.concat(st3, [k, pr[k].min, pr[k].max, pr[k].vsCur, pr[k].vsComp, pr[k].ref, pr[k].note]).map(c)));
-    append_(ss, '경쟁브랜드', (d.comps || []).map(x => base.concat(st3, [x.brand, x.items, x.range, x.loc, x.strength, x.promo, x.reaction]).map(c)));
+    append_(ss, '가격적정선', (d.prices || []).map(x => base.concat(st3, [x.cat, x.sub, x.min, x.max, x.vsCur, x.vsComp, x.note]).map(c)));
+    append_(ss, '경쟁브랜드', (d.comps || []).map(x => base.concat(st3, [x.grp, x.brand, x.range, x.strength, x.promo, x.reaction]).map(c)));
     append_(ss, '원본JSON', [[d.sid, at, s.name, JSON.stringify(d).slice(0, 49000)]]);
     return out_({ ok: true });
   } catch (err) {
@@ -81,16 +83,16 @@ function setup() {
     sh.getRange(r, 1, 1, 7).setFormulas([[k,
       `=IFERROR(COUNTA(UNIQUE(FILTER(상품평가!$F${R},상품평가!$G${R}=$A${r},상품평가!$B${R}="Y"))),0)`,
       `=COUNTIFS(상품평가!$G${R},$A${r},상품평가!$B${R},"Y")`, f('M'), f('N'),
-      `=IFERROR(MEDIAN(FILTER(가격적정선!$H${R},가격적정선!$G${R}=$A${r},가격적정선!$B${R}="Y",ISNUMBER(가격적정선!$H${R}))),"")`,
-      `=IFERROR(MEDIAN(FILTER(가격적정선!$I${R},가격적정선!$G${R}=$A${r},가격적정선!$B${R}="Y",ISNUMBER(가격적정선!$I${R}))),"")`]]);
+      `=IFERROR(MEDIAN(FILTER(가격적정선!$I${R},가격적정선!$G${R}=$A${r},가격적정선!$B${R}="Y",ISNUMBER(가격적정선!$I${R}))),"")`,
+      `=IFERROR(MEDIAN(FILTER(가격적정선!$J${R},가격적정선!$G${R}=$A${r},가격적정선!$B${R}="Y",ISNUMBER(가격적정선!$J${R}))),"")`]]);
   });
   sh.getRange('D4:E6').setNumberFormat('0.00'); sh.getRange('F4:G6').setNumberFormat('#,##0');
   sh.getRange('A9:C9').setValues([['복종', '경쟁브랜드 대비', '우리 가격 수준']]).setFontWeight('bold').setBackground(HB);
   CATS.forEach((k, i) => {
     const r = 10 + i, n = (col, v) => `COUNTIFS(가격적정선!$G${R},$A${r},가격적정선!$B${R},"Y",가격적정선!${col}${R},"${v}")`;
     sh.getRange(r, 1, 1, 3).setFormulas([[k,
-      `="저렴 "&${n('K', '저렴')}&" · 비슷 "&${n('K', '비슷')}&" · 비쌈 "&${n('K', '비쌈')}`,
-      `="낮은 편 "&${n('J', '낮은 편')}&" · 적정 "&${n('J', '적정')}&" · 높은 편 "&${n('J', '높은 편')}`]]);
+      `="저렴 "&${n('L', '저렴')}&" · 비슷 "&${n('L', '비슷')}&" · 비쌈 "&${n('L', '비쌈')}`,
+      `="낮은 편 "&${n('K', '낮은 편')}&" · 적정 "&${n('K', '적정')}&" · 높은 편 "&${n('K', '높은 편')}`]]);
   });
   sh.getRange('A14:B14').setValues([['복종', '상품 한줄평 모음 (매장 · 상품: 한줄평)']]).setFontWeight('bold').setBackground(HB);
   CATS.forEach((k, i) => {
@@ -100,10 +102,26 @@ function setup() {
   sh.getRange('A19:B19').setValues([['복종', '가격 의견 모음 (매장: 의견)']]).setFontWeight('bold').setBackground(HB);
   CATS.forEach((k, i) => {
     const r = 20 + i;
-    sh.getRange(r, 1, 1, 2).setFormulas([[k, `=IFERROR(TEXTJOIN(CHAR(10),TRUE,FILTER(가격적정선!$F${R}&": "&가격적정선!$M${R},가격적정선!$G${R}=$A${r},가격적정선!$B${R}="Y",가격적정선!$M${R}<>"")),"")`]]);
+    sh.getRange(r, 1, 1, 2).setFormulas([[k, `=IFERROR(TEXTJOIN(CHAR(10),TRUE,FILTER(가격적정선!$F${R}&" · "&가격적정선!$H${R}&": "&가격적정선!$M${R},가격적정선!$G${R}=$A${r},가격적정선!$B${R}="Y",가격적정선!$M${R}<>"")),"")`]]);
   });
   sh.getRange('B15:B22').setWrap(true).setVerticalAlignment('top');
   sh.setColumnWidth(1, 80); sh.setColumnWidth(2, 520);
+
+  // 가격적정선취합: 주요 세부복종별 적정가(중앙값) · 현재가 수준 · 경쟁 대비 분포 · 의견
+  sh = fresh_(ss, '가격적정선취합');
+  sh.getRange('A1:H1').setValues([['복종', '세부복종', '응답수', '적정 하한(중앙값)', '적정 상한(중앙값)', '현재가 수준', '경쟁브랜드 대비', '의견 모음']]).setFontWeight('bold').setBackground(HB);
+  PRICE_SUBS.forEach((p, i) => {
+    const r = 2 + i, cond = `가격적정선!$H${R}=$B${r},가격적정선!$B${R}="Y"`, n = (col, v) => `COUNTIFS(가격적정선!$H${R},$B${r},가격적정선!$B${R},"Y",가격적정선!${col}${R},"${v}")`;
+    sh.getRange(r, 1, 1, 8).setFormulas([[p[0], p[1],
+      `=COUNTIFS(가격적정선!$H${R},$B${r},가격적정선!$B${R},"Y")`,
+      `=IFERROR(MEDIAN(FILTER(가격적정선!$I${R},${cond},ISNUMBER(가격적정선!$I${R}))),"")`,
+      `=IFERROR(MEDIAN(FILTER(가격적정선!$J${R},${cond},ISNUMBER(가격적정선!$J${R}))),"")`,
+      `="낮은 편 "&${n('K', '낮은 편')}&" · 적정 "&${n('K', '적정')}&" · 높은 편 "&${n('K', '높은 편')}`,
+      `="저렴 "&${n('L', '저렴')}&" · 비슷 "&${n('L', '비슷')}&" · 비쌈 "&${n('L', '비쌈')}`,
+      `=IFERROR(TEXTJOIN(CHAR(10),TRUE,FILTER(가격적정선!$F${R}&": "&가격적정선!$M${R},${cond},가격적정선!$M${R}<>"")),"")`]]);
+  });
+  sh.getRange(2, 4, PRICE_SUBS.length, 2).setNumberFormat('#,##0'); sh.getRange(2, 8, PRICE_SUBS.length, 1).setWrap(true).setVerticalAlignment('top');
+  sh.setColumnWidth(6, 200); sh.setColumnWidth(7, 200); sh.setColumnWidth(8, 420); sh.setFrozenRows(1);
 
   // 세부복종별 / 상품별: QUERY 집계
   sh = fresh_(ss, '세부복종별');
@@ -126,7 +144,7 @@ function setup() {
   }
   sh.setFrozenRows(1);
 
-  ['복종별취합', '세부복종별', '상품별취합', '제출현황', '시즌응답', '상품평가', '가격적정선', '경쟁브랜드', '원본JSON'].forEach((n, i) => {
+  ['복종별취합', '세부복종별', '상품별취합', '가격적정선취합', '제출현황', '시즌응답', '상품평가', '가격적정선', '경쟁브랜드', '원본JSON'].forEach((n, i) => {
     ss.setActiveSheet(ss.getSheetByName(n)); ss.moveActiveSheet(i + 1);
   });
   const first = ss.getSheetByName('시트1') || ss.getSheetByName('Sheet1');
