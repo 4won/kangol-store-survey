@@ -16,6 +16,8 @@ const SEASON = arg('season', '26AW'), HUB = arg('hub', 'D:/claude/kangol-work-hu
 const sheetFile = join(ROOT, 'reports', 'sheet.txt');
 const SHEET = arg('sheet', existsSync(sheetFile) ? readFileSync(sheetFile, 'utf8').trim() : ''), CSVDIR = arg('csv', '');
 if (!SHEET && !CSVDIR) { console.error('시트 ID 가 없습니다. --sheet <ID> 를 주거나 reports/sheet.txt 에 ID 를 적어 두세요.'); process.exit(1); }
+const HUBPUB = flag('hub-publish');   // 허브(kangol-work-hub) ETC 메뉴용: 이미지는 허브의 product-info-old 를 참조, 출력은 허브 etc-reports
+const imgSrc = p => (HUBPUB ? `../product-info-old/${SEASON}/${p.img.split('/').pop()}` : `../../${SEASON}/${p.img}`);
 const LOW = 2.5, WARN = 3.0;                      // 점수 색 기준: LOW 미만 빨강, WARN 미만 주황
 const CATS = ['가방', '의류', '모자'];
 const PSUBS = { '가방': ['토트백', '크로스백', '백팩'], '의류': ['긴소매티셔츠', '라운드티셔츠', '집업', '바지', '자켓', '후드티셔츠', '셔츠', '니트'], '모자': ['벙거지', '야구모자'] };
@@ -213,7 +215,7 @@ const heat = x => (x == null ? 'h0' : x < LOW ? 'hl' : x < WARN ? 'hw' : x >= 4 
 const cell = (x, d = 1) => `<span class="cellv ${heat(x)}">${x == null ? '-' : x.toFixed(d)}</span>`;
 const clean = t => String(t || '').replace(/^\[테스트\]\s*/, '');
 const clip = (t, n) => { t = clean(t); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
-const thumb = p => (p.img ? `<img src="../../${SEASON}/${p.img}" alt="">` : '<i>-</i>');
+const thumb = p => (p.img ? `<img src="${imgSrc(p)}" alt="">` : '<i>-</i>');
 
 // SVG: 가로 막대 (점수 1~5, 2.5·3.0 기준선)
 function hbars(rows, { w = 330, label = 76, rowH = 13, gap = 6, min = 1, max = 5, thr = true } = {}) {
@@ -422,7 +424,7 @@ function brandHtml(g, l) {
   for (const c of CATS) {
     const list = products.filter(p => p.cat === c).sort((a, b) => a.sub.localeCompare(b.sub, 'ko') || dsc(a, b));
     body += `<tbody data-cat="${c}"><tr class="grp"><td colspan="14"><u class="dt" style="background:${catColor[c]};margin:0 1.4mm 0 0"></u>${c} · ${list.length}개</td></tr>`;
-    for (const p of list) body += `<tr data-no="${esc(p.no)}" data-cat="${c}" data-i="${rowIdx++}" class="${p.n ? '' : 'none'}"><td class="im">${p.img ? `<img src="../../${SEASON}/${p.img}" alt="">` : ''}</td><td>${esc(p.no)}</td><td><b>${esc(p.name)}</b></td><td>${esc(p.sub)}</td><td class="n">${n0(p.price)}</td><td>${esc(p.grade || '')}</td><td class="n">${n0(p.inbound)}</td><td class="n">${n0(p.sales)}</td><td class="n">${pct(p.rate)}</td><td class="n">${p.n || '-'}</td>${sc(p.design)}${sc(p.pscore)}${sc(p.comp)}<td class="n">${p.notIn || ''}</td></tr>`;
+    for (const p of list) body += `<tr data-no="${esc(p.no)}" data-cat="${c}" data-i="${rowIdx++}" class="${p.n ? '' : 'none'}"><td class="im">${p.img ? `<img src="${imgSrc(p)}" alt="">` : ''}</td><td>${esc(p.no)}</td><td><b>${esc(p.name)}</b></td><td>${esc(p.sub)}</td><td class="n">${n0(p.price)}</td><td>${esc(p.grade || '')}</td><td class="n">${n0(p.inbound)}</td><td class="n">${n0(p.sales)}</td><td class="n">${pct(p.rate)}</td><td class="n">${p.n || '-'}</td>${sc(p.design)}${sc(p.pscore)}${sc(p.comp)}<td class="n">${p.notIn || ''}</td></tr>`;
     body += '</tbody>';
   }
   page('전 상품 리스트', `<div class="sub">출고된 ${SEASON} 상품 ${products.length}개 · 카테고리 → 세부 복종 순, 같은 복종 안에서는 종합점수 높은 순 · 점수는 ${LOW.toFixed(1)} 미만 빨강, ${WARN.toFixed(1)} 미만 주황<span class="so"> · 행을 클릭하면 상품 상세가 열립니다</span></div>${body}</table>`, 'flow', 'main');
@@ -443,7 +445,7 @@ function detailHtml(p) {
   const ch = CHANNELS.map(c => { const rr = valid.filter(r => channelOf(r['매장명']) === c); return `<tr><td>${chLabel(c)}</td><td class="n">${new Set(rr.map(r => r['매장명'])).size || '-'}</td><td class="n">${cell(dAvg(rr), 2)}</td><td class="n">${cell(pAvg(rr), 2)}</td></tr>`; }).join('');
   const cm = p.comments.slice(0, 12).map(c => `<li><b>${esc(c.store)}</b> ${esc(clean(c.text))}</li>`).join('');
   return `<div class="dd">
-  <div class="dh"><div class="dimg">${p.img ? `<img src="../../${SEASON}/${p.img}" alt="">` : '<span>이미지 준비중</span>'}</div>
+  <div class="dh"><div class="dimg">${p.img ? `<img src="${imgSrc(p)}" alt="">` : '<span>이미지 준비중</span>'}</div>
    <div class="di"><div class="dcat"><u style="background:${catColor[p.cat]}"></u>${p.cat} · ${esc(p.sub)}</div><h2>${esc(p.name)}</h2>
     <div class="dm"><span class="tag">${p.no}</span><span class="tag">판매가 ${p.price ? n0(p.price) + '원' : '-'}</span>${p.grade ? `<span class="tag g">${esc(p.grade)}등급</span>` : ''}${p.colors.map(c => `<span class="tag c">${esc(c)}</span>`).join('')}</div>
     ${quad ? `<div class="dq" style="border-color:${quad.col}"><b style="color:${quad.col}">${quad.h}</b><span>${QSAY[quad.k]}</span></div>` : ''}
@@ -534,9 +536,9 @@ td.cm{font-size:7.5pt;min-width:60mm}td.cm div{margin-bottom:.6mm}td.low,.low{ba
 const fontLink = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Sans:wght@400;500;700&display=swap">';
 const wrap = (title, pagesArr, extra = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${title}</title>${fontLink}<style>${css}</style></head><body>${pagesArr.join('\n')}${extra}</body></html>`;
 const outDir = join(ROOT, 'reports', SEASON); mkdirSync(outDir, { recursive: true });
-const outMain = join(outDir, `취합리포트_${today}.html`), outApp = join(outDir, `취합리포트_부록_${today}.html`);
+const outMain = HUBPUB ? join(HUB, 'etc-reports', `${SEASON}_store_survey_report.html`) : join(outDir, `취합리포트_${today}.html`), outApp = join(outDir, `취합리포트_부록_${today}.html`);
 writeFileSync(outMain, wrap(`${SEASON} 매장 반응도 조사 취합 리포트`, mainPages, modalHtml));
-if (!flag('main-only')) writeFileSync(outApp, wrap(`${SEASON} 매장 반응도 조사 취합 리포트 · 부록`, appPages));
+if (!flag('main-only') && !HUBPUB) writeFileSync(outApp, wrap(`${SEASON} 매장 반응도 조사 취합 리포트 · 부록`, appPages));
 console.log(`리포트 생성: ${outMain}\n부록: ${outApp}\n  제출 ${storeCount}/${stores.length}개 매장 · 상품평가 ${PR.length}건 · 가격 ${PC.length}건 · 경쟁브랜드 ${CP.length}건 · 본문 ${mainPages.length}페이지 + 부록 ${appPages.length}개 섹션`);
 
 if (flag('pdf')) {
