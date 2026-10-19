@@ -103,6 +103,14 @@ const products = prodList.items.map(p => {
     comments: rs.filter(r => r['한줄평'] && !STATUS_RE.test(r['한줄평'])).map(r => ({ store: r['매장명'], text: r['한줄평'] })),
   };
 });
+// 가중 중앙값: 가격순으로 줄 세워 누적 가중치가 절반을 넘는 지점의 가격 (가중치 = 입고량 또는 판매량)
+function wmed(list, key) {
+  const a = list.filter(p => p.price && p[key] > 0).sort((x, y) => x.price - y.price), tot = a.reduce((t, p) => t + p[key], 0);
+  if (!a.length) return null;
+  let acc = 0; for (const p of a) { acc += p[key]; if (acc >= tot / 2) return p.price; }
+  return a[a.length - 1].price;
+}
+const priceStats = list => { const ps = list.filter(p => p.price).map(p => p.price); return { ps, wi: wmed(list, 'inbound'), ws: wmed(list, 'sales') }; };
 const respByCat = c => PR.filter(r => r['복종'] === c);
 const agg = list => ({ inbound: sum(list.map(p => p.inbound)), sales: sum(list.map(p => p.sales)), n: sum(list.map(p => p.n)) });
 const rateOf = a => (a.inbound ? a.sales / a.inbound : null);
@@ -135,16 +143,16 @@ for (const c of CATS) {
 
 // 3) 가격 적정선
 {
-  let body = `<table><thead><tr><th>복종</th><th>세부복종</th><th class="n">현재 판매가 범위</th><th class="n">판매가 중앙값</th><th class="n">응답</th><th class="n">적정 하한</th><th class="n">적정 상한</th><th>판정</th><th>우리 가격 수준</th><th>경쟁브랜드 대비</th><th>의견</th></tr></thead><tbody>`;
+  let body = `<table><thead><tr><th>복종</th><th>세부복종</th><th class="n">현재 판매가 범위</th><th class="n">입고 가중 중앙값</th><th class="n">판매 가중 중앙값</th><th class="n">응답</th><th class="n">적정 하한</th><th class="n">적정 상한</th><th>판정</th><th>우리 가격 수준</th><th>경쟁브랜드 대비</th><th>의견</th></tr></thead><tbody>`;
   for (const c of CATS) for (const s of PSUBS[c]) {
-    const ps = products.filter(p => p.cat === c && p.sub === s && p.price).map(p => p.price), rs = PC.filter(r => r['세부복종'] === s);
-    const lo = med(rs.map(r => num(r['적정하한']))), hi = med(rs.map(r => num(r['적정상한']))), pm_ = med(ps);
+    const { ps, wi: pm_, ws: pws } = priceStats(products.filter(p => p.cat === c && p.sub === s)), rs = PC.filter(r => r['세부복종'] === s);
+    const lo = med(rs.map(r => num(r['적정하한']))), hi = med(rs.map(r => num(r['적정상한'])));
     let verdict = '<span class="mut">-</span>';
     if (pm_ != null && hi != null && lo != null) verdict = pm_ > hi ? '<span class="tagr">적정가 초과</span>' : pm_ < lo ? '<span class="tagb">적정가 미만</span>' : '<span class="tagg">적정 범위</span>';
     const cm = rs.filter(r => r['의견']).slice(0, 3).map(r => `<div><b>${esc(r['매장명'])}</b> ${esc(r['의견'].replace(/^\[테스트\]\s*/, ''))}</div>`).join('');
-    body += `<tr><td class="nw">${c}</td><td class="nw">${s}</td><td class="n">${ps.length ? n0(Math.min(...ps)) + ' ~ ' + n0(Math.max(...ps)) : '-'}</td><td class="n">${n0(pm_)}</td><td class="n">${rs.length || '-'}</td><td class="n">${n0(lo)}</td><td class="n">${n0(hi)}</td><td>${verdict}</td><td>${dist(rs.map(r => r['현재가수준']), ['낮은 편', '적정', '높은 편'])}</td><td>${dist(rs.map(r => r['경쟁대비']), ['저렴', '비슷', '비쌈'])}</td><td class="cm">${cm}</td></tr>`;
+    body += `<tr><td class="nw">${c}</td><td class="nw">${s}</td><td class="n">${ps.length ? n0(Math.min(...ps)) + ' ~ ' + n0(Math.max(...ps)) : '-'}</td><td class="n">${n0(pm_)}</td><td class="n" style="color:#8C6B1F">${n0(pws)}</td><td class="n">${rs.length || '-'}</td><td class="n">${n0(lo)}</td><td class="n">${n0(hi)}</td><td>${verdict}</td><td>${dist(rs.map(r => r['현재가수준']), ['낮은 편', '적정', '높은 편'])}</td><td>${dist(rs.map(r => r['경쟁대비']), ['저렴', '비슷', '비쌈'])}</td><td class="cm">${cm}</td></tr>`;
   }
-  page('부록 B. 가격 적정선 상세', `<div class="sub">매장이 제시한 적정 가격대(중앙값)와 현재 판매가를 비교합니다. 판정: 판매가 중앙값이 적정 상한을 넘으면 "적정가 초과".</div>${body}</tbody></table>`, 'flow');
+  page('부록 B. 가격 적정선 상세', `<div class="sub">매장이 제시한 적정 가격대(중앙값)와 현재 판매가를 비교합니다. 입고량 가중 중앙값(상품 판매가를 입고량으로 가중)이 적정 하한~상한을 벗어나는지로 판정합니다. 판매 가중 중앙값은 참고용입니다.</div>${body}</tbody></table>`, 'flow');
 }
 
 // 4) 채널별 비교
@@ -314,12 +322,12 @@ const dash = (inner, cls = '') => mainPages.push(`<section class="pg dash ${cls}
   const lowCat = CATS.map(c => [c, pAvg(respByCat(c))]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1])[0];
   const topCat = CATS.map(c => [c, compOf(respByCat(c))]).filter(x => x[1] != null).sort((a, b) => b[1] - a[1])[0];
   const lowSeason = seasonBars.filter(x => x.v != null).sort((a, b) => a.v - b.v)[0];
-  const over = CATS.flatMap(c => PSUBS[c]).filter(sb => { const ps = products.filter(p => p.sub === sb && p.price).map(p => p.price), rs = PC.filter(r => r['세부복종'] === sb), hi = med(rs.map(r => num(r['적정상한']))); return ps.length && hi != null && med(ps) > hi; });
+  const over = CATS.flatMap(c => PSUBS[c]).filter(sb => { const st = priceStats(products.filter(p => p.sub === sb)), rs = PC.filter(r => r['세부복종'] === sb), hi = med(rs.map(r => num(r['적정상한']))); return st.wi != null && hi != null && st.wi > hi; });
   const pts = [
     topCat && `<div style="border-color:${C.navy}"><b>${topCat[0]}</b> 종합점수가 가장 높음 (${topCat[1].toFixed(2)})</div>`,
     lowCat && `<div style="border-color:${C.low}"><b>${lowCat[0]}</b> 가격 점수가 가장 낮음 (${lowCat[1].toFixed(2)})</div>`,
     lowSeason && `<div style="border-color:${C.warn}">시즌 전반 중 <b>${lowSeason.label}</b> 점수가 가장 낮음 (${lowSeason.v.toFixed(1)})</div>`,
-    `<div style="border-color:${C.brass}">현재 판매가가 적정 상한을 넘는 세부 복종 <b>${over.length}개</b>${over.length ? ' · ' + over.slice(0, 3).join(', ') + (over.length > 3 ? ' 외' : '') : ''}</div>`,
+    `<div style="border-color:${C.brass}">입고 가중 판매가가 적정 상한을 넘는 세부 복종 <b>${over.length}개</b>${over.length ? ' · ' + over.slice(0, 3).join(', ') + (over.length > 3 ? ' 외' : '') : ''}</div>`,
     `<div style="border-color:${C.good}">디자인·가격 모두 높은 상품 <b>${qa.q.HH.length}개</b> · 모두 낮은 상품 <b>${qa.q.LL.length}개</b></div>`,
   ].filter(Boolean).join('');
   const subm = CHANNELS.map(ch => { const all = stores.filter(x => x.type === ch).length, dn = stores.filter(x => x.type === ch && S.some(r => r['매장명'] === x.name)).length; return `<span>${chLabel(ch)} <b>${dn}/${all}</b></span>`; }).join('');
@@ -389,18 +397,18 @@ for (const c of CATS) {
   let rows = '';
   for (const c of CATS) {
     rows += `<div class="pgh"><u style="background:${catColor[c]}"></u>${c}</div>`;
-    const info = PSUBS[c].map(sb => { const ps = products.filter(p => p.cat === c && p.sub === sb && p.price).map(p => p.price), rs2 = PC.filter(r => r['세부복종'] === sb); return { sb, ps, rs: rs2, lo: med(rs2.map(r => num(r['적정하한']))), hi: med(rs2.map(r => num(r['적정상한']))) }; });
+    const info = PSUBS[c].map(sb => { const { ps, wi, ws } = priceStats(products.filter(p => p.cat === c && p.sub === sb)), rs2 = PC.filter(r => r['세부복종'] === sb); return { sb, ps, wi, ws, rs: rs2, lo: med(rs2.map(r => num(r['적정하한']))), hi: med(rs2.map(r => num(r['적정상한']))) }; });
     const vals = info.flatMap(i => [i.lo, i.hi, ...(i.ps.length ? [Math.min(...i.ps), Math.max(...i.ps)] : [])]).filter(v => v != null), lo0 = Math.floor((Math.min(...vals, 1e9) * 0.9) / 10000) * 10000, hi0 = Math.ceil((Math.max(...vals, 0) * 1.05) / 10000) * 10000;
     for (const i of info) {
-      const X = v => 6 + ((v - lo0) / (hi0 - lo0 || 1)) * 288, pm_ = med(i.ps);
+      const X = v => 6 + ((v - lo0) / (hi0 - lo0 || 1)) * 288, pm_ = i.wi;
       let verdict = '<span class="vd v0">응답 없음</span>';
       if (pm_ != null && i.hi != null) verdict = pm_ > i.hi ? '<span class="vd vr">적정가 초과</span>' : pm_ < i.lo ? '<span class="vd vb">적정가 미만</span>' : '<span class="vd vg">적정 범위</span>';
-      const svg = `<svg viewBox="0 0 300 14" width="100%"><rect x="6" y="6" width="288" height="2" fill="#e3e8f0"/>${i.lo != null ? `<rect x="${X(i.lo)}" y="1" width="${Math.max(3, X(i.hi) - X(i.lo))}" height="12" rx="2" fill="${C.navy}" opacity=".28"/>` : ''}${i.ps.length ? `<line x1="${X(Math.min(...i.ps))}" x2="${X(Math.max(...i.ps))}" y1="7" y2="7" stroke="#1c2230" stroke-width="1.6"/><circle cx="${X(pm_)}" cy="7" r="3.2" fill="#1c2230"/>` : ''}</svg>`;
+      const svg = `<svg viewBox="0 0 300 14" width="100%"><rect x="6" y="6" width="288" height="2" fill="#e3e8f0"/>${i.lo != null ? `<rect x="${X(i.lo)}" y="1" width="${Math.max(3, X(i.hi) - X(i.lo))}" height="12" rx="2" fill="${C.navy}" opacity=".28"/>` : ''}${i.ps.length ? `<line x1="${X(Math.min(...i.ps))}" x2="${X(Math.max(...i.ps))}" y1="7" y2="7" stroke="#1c2230" stroke-width="1.6"/>${i.ws != null ? `<circle cx="${X(i.ws)}" cy="7" r="3.2" fill="${C.bag}" stroke="#fff" stroke-width=".8"/>` : ''}${i.wi != null ? `<circle cx="${X(i.wi)}" cy="7" r="3.2" fill="${C.navy2}" stroke="#fff" stroke-width=".8"/>` : ''}` : ''}</svg>`;
       const lvl = dist(i.rs.map(r => r['현재가수준']), ['낮은 편', '적정', '높은 편']), cmp = dist(i.rs.map(r => r['경쟁대비']), ['저렴', '비슷', '비쌈']), cm = i.rs.find(r => r['의견']);
-      rows += `<div class="pr"><b>${i.sb}</b><div class="rg">${svg}</div><span class="rn">${i.lo != null ? `적정 ${n0(i.lo)}~${n0(i.hi)}` : '적정가 응답 없음'}<br>현재 ${i.ps.length ? `${n0(Math.min(...i.ps))}~${n0(Math.max(...i.ps))}` : '-'}</span>${verdict}<span class="ds">가격 수준 ${lvl}<br>경쟁 대비 ${cmp}</span><span class="cmx">${cm ? esc(clip(cm['의견'], 46)) : ''}</span></div>`;
+      rows += `<div class="pr"><b>${i.sb}</b><div class="rg">${svg}</div><span class="rn">${i.lo != null ? `적정 ${n0(i.lo)}~${n0(i.hi)}` : '적정가 응답 없음'}<br>현재 ${i.ps.length ? `${n0(Math.min(...i.ps))}~${n0(Math.max(...i.ps))}` : '-'}<br><span class="wi">입고가중 ${n0(i.wi)}</span> · <span class="ws">판매가중 ${n0(i.ws)}</span></span>${verdict}<span class="ds">가격 수준 ${lvl}<br>경쟁 대비 ${cmp}</span><span class="cmx">${cm ? esc(clip(cm['의견'], 46)) : ''}</span></div>`;
     }
   }
-  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '가격 적정선', '막대: 매장이 제시한 적정 가격대(중앙값) · 선: 현재 판매가 범위 · 점: 판매가 중앙값')}<div class="prs">${rows}</div>`, 'p6');
+  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '가격 적정선', '막대: 매장이 제시한 적정 가격대(중앙값) · 선: 현재 판매가 범위 · 적정 판정은 입고량 가중 중앙값 기준')}<div class="prs"><div class="note plg"><span class="lg wi">●</span> 입고량 가중 중앙값 (진한 남색) <span class="lg ws">●</span> 판매량 가중 중앙값 (주황) · 두 값 모두 상품 판매가를 입고량/판매량으로 가중해 구한 중앙값</div>${rows}</div>`, 'p6');
 }
 
 // ---- P7 경쟁브랜드 (클릭하면 매장 의견 상세)
@@ -543,8 +551,8 @@ table.allp{font-size:7.4pt}table.allp td{vertical-align:middle;padding:.5mm 1.4m
 mark{background:#fbe8a8;color:inherit;padding:0 .3mm;border-radius:.4mm}
 .empty{color:#9aa0ab;font-size:7.8pt;padding:2mm 0}
 .qt{font-size:8pt;border-left:.8mm solid var(--mist);padding:.6mm 0 .6mm 2.4mm;margin-bottom:1.6mm}.qt b{color:var(--navy2)}
-.pgh{font-weight:700;font-size:9pt;margin:1.4mm 0 .4mm;color:var(--navy2);border-bottom:.5pt solid var(--line);padding-bottom:.6mm}.pgh u{display:inline-block;width:2.4mm;height:2.4mm;border-radius:50%;margin-right:1.6mm}
-.prs{flex:1;min-height:0;overflow:hidden}.pr{display:grid;grid-template-columns:22mm 1fr 34mm 20mm 40mm 50mm;gap:3mm;align-items:center;padding:.9mm 0;border-bottom:.5pt solid #f0f1f4;font-size:8pt}.pr b{font-weight:500}.rn{font-size:7pt;color:var(--mut);line-height:1.25;white-space:nowrap}.ds{font-size:7pt;color:var(--mut);line-height:1.25}.cmx{font-size:7.2pt;color:#4a5263}
+.pgh{font-weight:700;font-size:9pt;margin:.8mm 0 .2mm;color:var(--navy2);border-bottom:.5pt solid var(--line);padding-bottom:.6mm}.pgh u{display:inline-block;width:2.4mm;height:2.4mm;border-radius:50%;margin-right:1.6mm}
+.prs{flex:1;min-height:0;overflow:hidden}.pr{display:grid;grid-template-columns:22mm 1fr 40mm 20mm 38mm 46mm;gap:3mm;align-items:center;padding:.15mm 0;border-bottom:.5pt solid #f0f1f4;font-size:8pt}.pr b{font-weight:500}.rn{font-size:7pt;color:var(--mut);line-height:1.25;white-space:nowrap}.rn .wi,.lg.wi{color:#16283F;font-weight:700}.rn .ws,.lg.ws{color:#c98a55;font-weight:700}.plg{margin:.6mm 0 1.4mm}.ds{font-size:7pt;color:var(--mut);line-height:1.25}.cmx{font-size:7.2pt;color:#4a5263}
 .vd{font-size:7pt;font-weight:700;padding:.4mm 1.6mm;border-radius:1mm;white-space:nowrap;text-align:center}.vr{background:var(--lowbg);color:var(--lowfg)}.vb{background:var(--okbg);color:var(--okfg)}.vg{background:#e1ece6;color:#2c5f46}.v0{background:#f1f3f7;color:#9aa0ab}
 .cp{border-top:.5pt solid #f0f1f4;padding:1.6mm 0}.cpt{display:grid;grid-template-columns:5mm 28mm 1fr 18mm;gap:2mm;align-items:center}.rk{width:4.4mm;height:4.4mm;border-radius:50%;background:var(--navy2);color:#fff;font-size:7pt;display:grid;place-items:center}.cpt b{font-size:9pt}.bar{height:2.2mm;background:#f1f3f7;border-radius:1mm}.bar i{display:block;height:100%;background:var(--navy);border-radius:1mm;opacity:.7}.cpt em{font-style:normal;font-size:7.5pt;color:var(--mut);text-align:right}
 .cp dl{display:grid;grid-template-columns:14mm 1fr;gap:.3mm 2mm;margin:1mm 0 0 7mm;font-size:7.6pt}.cp dt{color:var(--mut)}.cp dd{margin:0}
