@@ -76,5 +76,6 @@ function setup() {
   ensureSheets_(ss);
   const first = ss.getSheetByName('시트1') || ss.getSheetByName('Sheet1');
   if (first && first.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(first);
-  SpreadsheetApp.getUi().alert('설정 완료. 이제 [배포 > 새 배포 > 웹 앱] 으로 URL 을 만드세요.');
+  ss.toast('설정 완료. 이제 [배포 > 새 배포 > 웹 앱] 으로 URL 을 만드세요.', 'setup', 10);   // alert 는 시트 창에서 확인을 눌러야 끝나므로 toast 사용
+  Logger.log('설정 완료');
 }
