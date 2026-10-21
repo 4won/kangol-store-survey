@@ -117,7 +117,7 @@ const MAXN=10, INITN=3;
 const LEVELS=['너무 많다','많다','적당하다','모자르다','너무 모자르다'];
 const OVER=[['store','DP하지 않고 창고에 적재'],['dp','넘치더라도 매장에 추가 DP'],['etc','기타 (직접 입력)']];
 const DIR=[['remove','매장에서 제거 (반품 등)'],['keep','매장 내 보유 (창고 보관 등)'],['more','과다하지만 추가 DP (더 많이 보여줘야 함)']];
-const STEPS=['매장 선택','DP 현황','운영 실태','제거 품번','추가 품번·의견','제출'];
+const STEPS=['매장 선택','DP 현황','운영 실태','제거 품번','추가 품번','자유 의견','제출'];
 const DKEY='sku-survey-draft-'+(CFG.season||'');
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -176,8 +176,8 @@ function pickStep(kind,title,sub){
   return `<h2>${title}</h2><div class="sub">${sub}</div>`+CATS.map(c=>{const n=st[kind][c].length,sel=chosen(c,kind).length;
     return `<div class="card"><h3>${c} <span class="hint">선택 ${sel}개 · 최대 ${MAXN}개</span></h3>${st[kind][c].map((_,i)=>slotHtml(kind,c,i)).join('')}${n<MAXN?`<button type="button" class="btn sm" data-addslot="${kind}|${c}">+ 칸 추가</button>`:''}</div>`}).join('')}
 function stepRemove(){return pickStep('remove','5. 제거하고 싶은 품번','<span class="red">AW 신상품 기준</span>입니다. 품번이나 상품명 일부만 입력해도 검색됩니다. 의류·가방·모자 각각 최대 10개까지 고를 수 있습니다.')}
-function freeCard(){return `<div class="card"><h3>7. SKU 관련 하고 싶은 말씀</h3><div class="sub">SKU 운영과 관련해 본사에 전하고 싶은 내용을 자유롭게 적어 주세요. (선택)</div><textarea data-p="free" rows="6" placeholder="예: 진열 공간, 창고 사정, 상품 구성, 배분 방식 등">${esc(st.free||'')}</textarea></div>`}
-function stepAdd(){return pickStep('add','6. 추가로 받고 싶은 품번','<span class="red">AW 신상품 기준</span>입니다. 품번이나 상품명 일부만 입력해도 검색됩니다. 제거 품번으로 고른 상품은 목록에 나오지 않습니다.')+freeCard()}
+function stepFree(){return `<h2>7. SKU 관련 하고 싶은 말씀</h2><div class="sub">SKU 운영과 관련해 본사에 전하고 싶은 내용을 자유롭게 적어 주세요. 작성하지 않아도 제출할 수 있습니다.</div><div class="card"><textarea data-p="free" rows="6" placeholder="예: 진열 공간, 창고 사정, 상품 구성, 배분 방식 등">${esc(st.free||'')}</textarea></div>`}
+function stepAdd(){return pickStep('add','6. 추가로 받고 싶은 품번','<span class="red">AW 신상품 기준</span>입니다. 품번이나 상품명 일부만 입력해도 검색됩니다. 제거 품번으로 고른 상품은 목록에 나오지 않습니다.')}
 
 function matches(kind,c,text,cur){
   const toks=text.toLowerCase().split(/\s+/).filter(Boolean);if(!toks.length)return [];
@@ -206,8 +206,8 @@ ${CATS.map(c=>{const v=st.sku[c];return `<dt>${c} DP</dt><dd>실제 ${v.actual??
 ${miss.length?`<div class="err">필수 항목을 입력해 주세요: ${miss.join(', ')}</div>`:''}
 <div id="subErr" class="err"></div>
 <button type="button" class="btn pri" data-submit="1" ${miss.length||ui.busy?'disabled':''}>${ui.busy?'제출 중...':'제출하기'}</button></div>`}
-const RENDER=[stepStore,stepDp,stepOps,stepRemove,stepAdd,stepSubmit];
-function stepDone(i){const s=st;return [!!s.store.name,CATS.every(c=>s.sku[c].actual!==''&&s.sku[c].actual!=null&&s.sku[c].ideal!==''&&s.sku[c].ideal!=null),!!(s.over&&s.over.choice)||!!s.dir,CATS.some(c=>chosen(c,'remove').length),CATS.some(c=>chosen(c,'add').length)||!!(s.free||'').trim(),!!ui.sent][i]}
+const RENDER=[stepStore,stepDp,stepOps,stepRemove,stepAdd,stepFree,stepSubmit];
+function stepDone(i){const s=st;return [!!s.store.name,CATS.every(c=>s.sku[c].actual!==''&&s.sku[c].actual!=null&&s.sku[c].ideal!==''&&s.sku[c].ideal!=null),!!(s.over&&s.over.choice)||!!s.dir,CATS.some(c=>chosen(c,'remove').length),CATS.some(c=>chosen(c,'add').length),!!(s.free||'').trim(),!!ui.sent][i]}
 function render(){
   const nav=`<nav class="steps">${STEPS.map((s,i)=>`<button type="button" data-step="${i}" ${i>0&&!st.store.name?'disabled':''} class="${ui.step===i?'on':''} ${stepDone(i)?'done':''}">${s}</button>`).join('')}</nav><div class="bar"><i style="width:${Math.round((ui.step+1)/STEPS.length*100)}%"></i></div>`;
   const nextBtn=ui.step<STEPS.length-1;
