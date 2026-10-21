@@ -93,7 +93,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .ok{color:var(--ok);font-weight:500}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:9px;font-size:14px;z-index:20;max-width:90vw}
 .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
-.secret{display:inline-block;font-size:11.5px;font-weight:700;color:var(--bad);border:1px solid var(--bad);border-radius:99px;padding:0 8px;margin-left:6px;vertical-align:1px}
+.red{color:var(--bad);font-weight:700}.slot input::placeholder{color:var(--mute);opacity:.55}.secret{display:inline-block;font-size:11.5px;font-weight:700;color:var(--bad);border:1px solid var(--bad);border-radius:99px;padding:0 8px;margin-left:6px;vertical-align:1px}
 </style>
 </head>
 <body>
@@ -117,7 +117,7 @@ const MAXN=10, INITN=3;
 const LEVELS=['너무 많다','많다','적당하다','모자르다','너무 모자르다'];
 const OVER=[['store','DP하지 않고 창고에 적재'],['dp','넘치더라도 매장에 추가 DP'],['etc','기타 (직접 입력)']];
 const DIR=[['remove','매장에서 제거 (반품 등)'],['keep','매장 내 보유 (창고 보관 등)'],['more','과다하지만 추가 DP (더 많이 보여줘야 함)']];
-const STEPS=['매장 선택','DP 현황','운영 실태','제거 품번','추가 품번','제출'];
+const STEPS=['매장 선택','DP 현황','운영 실태','제거 품번','추가 품번·의견','제출'];
 const DKEY='sku-survey-draft-'+(CFG.season||'');
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -126,7 +126,7 @@ const uniq=a=>[...new Set(a)];
 const won=n=>n?Number(n).toLocaleString('ko-KR')+'원':'';
 function uuid(){return 'K'+Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
 function slots(){return Array.from({length:INITN},()=>({no:'',q:''}))}
-function blank(){const o={store:{},sku:{},opinion:{},over:{},dir:'',remove:{},add:{},sid:uuid()};CATS.forEach(c=>{o.sku[c]={};o.remove[c]=slots();o.add[c]=slots()});return o}
+function blank(){const o={store:{},sku:{},opinion:{},over:{},dir:'',free:'',remove:{},add:{},sid:uuid()};CATS.forEach(c=>{o.sku[c]={};o.remove[c]=slots();o.add[c]=slots()});return o}
 let stores=[],P=[],byNo={};
 let st=blank();
 try{const d=JSON.parse(localStorage.getItem(DKEY)||'null');if(d&&d.store){st=Object.assign(blank(),d);CATS.forEach(c=>{if(!st.remove[c]||!st.remove[c].length)st.remove[c]=slots();if(!st.add[c]||!st.add[c].length)st.add[c]=slots()})}}catch(e){}
@@ -158,7 +158,7 @@ function stepDp(){return `<h2>매장 DP 현황</h2>
 <div class="card"><h3>2. 매장 운영 SKU 수에 대한 의견</h3>${CATS.map(c=>q(c,`<div class="lvl">${LEVELS.map((l,i)=>`<button type="button" data-lv="${c}|${i+1}" class="${st.opinion[c]===i+1?'on':''}">${i+1}) ${l}</button>`).join('')}</div>`)).join('')}</div>`}
 
 function stepOps(){const o=st.over||{};return `<h2>운영 실태와 방향</h2>
-<div class="card"><h3>3. 과다 SKU에 대한 운영 실태 <span class="secret">비공개</span></h3><div class="sub">솔직하게 말씀해 주세요.</div>
+<div class="card"><h3>3. 과다 SKU에 대한 운영 실태 <span class="secret">비공개</span></h3><div class="sub">다른 매장에는 공개되지 않습니다. 솔직하게 말씀해 주세요.</div>
 <div class="opts col">${OVER.map(([k,l],i)=>`<button type="button" data-ov="${k}" class="${o.choice===k?'on':''}">${i+1}) ${esc(l)}</button>`).join('')}</div>
 ${o.choice==='etc'?`<input type="text" data-p="over.other" value="${esc(o.other||'')}" placeholder="운영 방식을 직접 입력해 주세요">`:''}</div>
 <div class="card"><h3>4. 적정DP수 − 실제DP수 차이에 대해 하고 싶은 방향</h3>
@@ -170,13 +170,14 @@ function otherKind(k){return k==='remove'?'add':'remove'}
 function slotHtml(kind,c,i){
   const x=st[kind][c][i],p=x.no?byNo[x.no]:null,val=p?`${p.no} · ${p.name}`:(x.q||'');
   return `<div class="slot ${p?'sel':''}" data-kind="${kind}" data-cat="${c}" data-i="${i}"><span class="n">${i+1}</span>
-<input type="search" class="ac" value="${esc(val)}" placeholder="품번 또는 상품명 일부를 입력 (예: ${c==='가방'?'TB40':c==='모자'?'K38':'RT18'})" autocomplete="off" ${p?'readonly':''}>
+<input type="search" class="ac" value="${esc(val)}" placeholder="품번 또는 상품명 입력 (일부만 입력해도 검색됩니다)" autocomplete="off" ${p?'readonly':''}>
 <button type="button" class="x" data-clear="1" aria-label="지우기">×</button><div class="dd" hidden></div></div>`}
 function pickStep(kind,title,sub){
   return `<h2>${title}</h2><div class="sub">${sub}</div>`+CATS.map(c=>{const n=st[kind][c].length,sel=chosen(c,kind).length;
     return `<div class="card"><h3>${c} <span class="hint">선택 ${sel}개 · 최대 ${MAXN}개</span></h3>${st[kind][c].map((_,i)=>slotHtml(kind,c,i)).join('')}${n<MAXN?`<button type="button" class="btn sm" data-addslot="${kind}|${c}">+ 칸 추가</button>`:''}</div>`}).join('')}
-function stepRemove(){return pickStep('remove','5. 제거하고 싶은 품번','AW 신상품 기준입니다. 품번이나 상품명 일부만 입력해도 검색됩니다. 의류·가방·모자 각각 최대 10개까지 고를 수 있습니다.')}
-function stepAdd(){return pickStep('add','6. 추가로 받고 싶은 품번','AW 신상품 기준입니다. 품번이나 상품명 일부만 입력해도 검색됩니다. 제거 품번으로 고른 상품은 목록에 나오지 않습니다.')}
+function stepRemove(){return pickStep('remove','5. 제거하고 싶은 품번','<span class="red">AW 신상품 기준</span>입니다. 품번이나 상품명 일부만 입력해도 검색됩니다. 의류·가방·모자 각각 최대 10개까지 고를 수 있습니다.')}
+function freeCard(){return `<div class="card"><h3>7. SKU 관련 하고 싶은 말씀</h3><div class="sub">SKU 운영과 관련해 본사에 전하고 싶은 내용을 자유롭게 적어 주세요. (선택)</div><textarea data-p="free" rows="6" placeholder="예: 진열 공간, 창고 사정, 상품 구성, 배분 방식 등">${esc(st.free||'')}</textarea></div>`}
+function stepAdd(){return pickStep('add','6. 추가로 받고 싶은 품번','<span class="red">AW 신상품 기준</span>입니다. 품번이나 상품명 일부만 입력해도 검색됩니다. 제거 품번으로 고른 상품은 목록에 나오지 않습니다.')+freeCard()}
 
 function matches(kind,c,text,cur){
   const toks=text.toLowerCase().split(/\s+/).filter(Boolean);if(!toks.length)return [];
@@ -192,7 +193,7 @@ function showDd(slot){
 /* ---------- 제출 ---------- */
 function build(){
   const rows=kind=>CATS.flatMap(c=>chosen(c,kind).map(no=>({cat:c,no,name:byNo[no]?.name||''})));
-  return {sid:st.sid,season:CFG.season,at:new Date().toISOString(),store:st.store,sku:st.sku,opinion:st.opinion,over:st.over||{},dir:st.dir||'',remove:rows('remove'),add:rows('add'),hp:$('#hp').value}}
+  return {sid:st.sid,season:CFG.season,at:new Date().toISOString(),store:st.store,sku:st.sku,opinion:st.opinion,over:st.over||{},dir:st.dir||'',free:st.free||'',remove:rows('remove'),add:rows('add'),hp:$('#hp').value}}
 function missing(){const m=[];if(!st.store.name)m.push('매장');if(CATS.some(c=>['actual','ideal'].some(k=>st.sku[c][k]===''||st.sku[c][k]==null)))m.push('1. 매장 SKU (실제·적정 DP수 6칸 모두)');return m}
 function stepSubmit(){
   if(ui.sent)return `<div class="card"><h2>제출 완료</h2><div class="ok">${esc(ui.sent)} 의견이 제출되었습니다. 감사합니다.</div><div class="sub">수정해서 같은 매장으로 다시 제출하면 가장 최근 응답이 반영됩니다.</div><button type="button" class="btn" data-again="1">내용 수정하기</button></div>`;
@@ -201,12 +202,12 @@ function stepSubmit(){
 <dt>매장</dt><dd>${esc(st.store.name||'-')}${st.store.type?` (${esc(st.store.type)} · ${esc(st.store.group)})`:''}</dd>
 ${CATS.map(c=>{const v=st.sku[c];return `<dt>${c} DP</dt><dd>실제 ${v.actual??'-'} / 적정 ${v.ideal??'-'}</dd>`}).join('')}
 <dt>운영 방향</dt><dd>${esc(dirL||'-')}</dd>
-<dt>제거 요청 품번</dt><dd>${b.remove.length}개</dd><dt>추가 요청 품번</dt><dd>${b.add.length}개</dd></dl>
+<dt>제거 요청 품번</dt><dd>${b.remove.length}개</dd><dt>추가 요청 품번</dt><dd>${b.add.length}개</dd><dt>자유 의견</dt><dd>${(st.free||'').trim()?'작성함':'없음'}</dd></dl>
 ${miss.length?`<div class="err">필수 항목을 입력해 주세요: ${miss.join(', ')}</div>`:''}
 <div id="subErr" class="err"></div>
 <button type="button" class="btn pri" data-submit="1" ${miss.length||ui.busy?'disabled':''}>${ui.busy?'제출 중...':'제출하기'}</button></div>`}
 const RENDER=[stepStore,stepDp,stepOps,stepRemove,stepAdd,stepSubmit];
-function stepDone(i){const s=st;return [!!s.store.name,CATS.every(c=>s.sku[c].actual!==''&&s.sku[c].actual!=null&&s.sku[c].ideal!==''&&s.sku[c].ideal!=null),!!(s.over&&s.over.choice)||!!s.dir,CATS.some(c=>chosen(c,'remove').length),CATS.some(c=>chosen(c,'add').length),!!ui.sent][i]}
+function stepDone(i){const s=st;return [!!s.store.name,CATS.every(c=>s.sku[c].actual!==''&&s.sku[c].actual!=null&&s.sku[c].ideal!==''&&s.sku[c].ideal!=null),!!(s.over&&s.over.choice)||!!s.dir,CATS.some(c=>chosen(c,'remove').length),CATS.some(c=>chosen(c,'add').length)||!!(s.free||'').trim(),!!ui.sent][i]}
 function render(){
   const nav=`<nav class="steps">${STEPS.map((s,i)=>`<button type="button" data-step="${i}" ${i>0&&!st.store.name?'disabled':''} class="${ui.step===i?'on':''} ${stepDone(i)?'done':''}">${s}</button>`).join('')}</nav><div class="bar"><i style="width:${Math.round((ui.step+1)/STEPS.length*100)}%"></i></div>`;
   const nextBtn=ui.step<STEPS.length-1;

@@ -12,7 +12,7 @@
 const HEADERS = {
   '응답': ['제출ID', '최신', '제출일시', '시즌', '채널형태', '채널계열', '매장명',
     '의류_실제DP', '의류_적정DP', '의류_차이', '가방_실제DP', '가방_적정DP', '가방_차이', '모자_실제DP', '모자_적정DP', '모자_차이',
-    '의류_의견', '가방_의견', '모자_의견', '과다SKU_운영실태', '과다SKU_기타', '차이_방향', '제거요청수', '추가요청수'],
+    '의류_의견', '가방_의견', '모자_의견', '과다SKU_운영실태', '과다SKU_기타', '차이_방향', '제거요청수', '추가요청수', 'SKU_자유의견'],
   '제거요청': ['제출ID', '최신', '제출일시', '채널형태', '채널계열', '매장명', '복종', '품번', '상품명'],
   '추가요청': ['제출ID', '최신', '제출일시', '채널형태', '채널계열', '매장명', '복종', '품번', '상품명'],
   '원본JSON': ['제출ID', '제출일시', '매장명', 'JSON'],
@@ -44,7 +44,7 @@ function doPost(e) {
     const num = v => (v === '' || v == null ? '' : Number(v));
     const diff = x => (x && x.actual !== '' && x.actual != null && x.ideal !== '' && x.ideal != null ? Number(x.actual) - Number(x.ideal) : '');
     const sku = CATS.flatMap(cat => { const x = k[cat] || {}; return [num(x.actual), num(x.ideal), diff(x)]; });
-    append_(ss, '응답', [base.concat([d.season], st3, sku, CATS.map(cat => LEVEL[o[cat]] || ''), [OVER[ov.choice] || '', ov.choice === 'etc' ? ov.other || '' : '', DIR[d.dir] || '', (d.remove || []).length, (d.add || []).length]).map(c)]);
+    append_(ss, '응답', [base.concat([d.season], st3, sku, CATS.map(cat => LEVEL[o[cat]] || ''), [OVER[ov.choice] || '', ov.choice === 'etc' ? ov.other || '' : '', DIR[d.dir] || '', (d.remove || []).length, (d.add || []).length, d.free || '']).map(c)]);
     append_(ss, '제거요청', (d.remove || []).map(x => base.concat(st3, [x.cat, x.no, x.name]).map(c)));
     append_(ss, '추가요청', (d.add || []).map(x => base.concat(st3, [x.cat, x.no, x.name]).map(c)));
     append_(ss, '원본JSON', [[d.sid, at, s.name, JSON.stringify(d).slice(0, 49000)]]);
@@ -65,10 +65,12 @@ function markOld_(sh, storeCol, store) {
 function ensureSheets_(ss) {
   Object.keys(HEADERS).forEach(n => {
     let sh = ss.getSheetByName(n);
-    if (!sh) { sh = ss.insertSheet(n); sh.getRange(1, 1, 1, HEADERS[n].length).setValues([HEADERS[n]]).setFontWeight('bold').setBackground('#e3e8f0'); sh.setFrozenRows(1); }
+    if (!sh) { sh = ss.insertSheet(n); sh.setFrozenRows(1); }
+    // 1행(헤더)은 항상 최신 정의로 맞춤 — 열이 추가돼도 setup() 한 번으로 반영, 데이터 행은 건드리지 않음
+    sh.getRange(1, 1, 1, HEADERS[n].length).setValues([HEADERS[n]]).setFontWeight('bold').setBackground('#e3e8f0');
   });
 }
-/** 최초 1회 실행: 응답 탭 4개를 만듭니다. (기본 시트1 은 비어 있으면 지움) */
+/** 최초 1회 실행: 응답 탭 4개를 만들고 헤더를 최신으로 맞춥니다. 코드를 바꾼 뒤 다시 실행해도 데이터는 그대로입니다. */
 function setup() {
   const ss = SpreadsheetApp.getActive();
   ensureSheets_(ss);
