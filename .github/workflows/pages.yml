@@ -1,9 +1,10 @@
 name: Deploy survey to GitHub Pages
-# 시즌 폴더(26AW, 27SS ...)와 루트 index.html 만 배포합니다. tools/ apps-script/ README 는 배포 안 됨.
+# 조사 폴더(예: 상품반응도_26AW/) 안의 시즌 폴더(26AW, 27SS ...)와 루트 index.html 만 배포합니다.
+# tools/ apps-script/ reports/ README 는 배포되지 않습니다. 접속 주소는 .../kangol-store-survey/26AW/ 로 유지됩니다.
 on:
   push:
     branches: [main]
-    paths: ['[0-9][0-9][AS][WS]/**', 'index.html', '.github/workflows/pages.yml']
+    paths: ['*/[0-9][0-9][AS][WS]/**', 'index.html', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,7 +25,7 @@ jobs:
         run: |
           mkdir _site
           cp index.html _site/
-          for d in [0-9][0-9][AS][WS]; do [ -d "$d" ] && cp -r "$d" _site/; done
+          for d in */[0-9][0-9][AS][WS]; do [ -d "$d" ] && cp -r "$d" _site/; done
           touch _site/.nojekyll
           printf 'User-agent: *\nDisallow: /\n' > _site/robots.txt
       - uses: actions/configure-pages@v5
