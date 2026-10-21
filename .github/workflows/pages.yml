@@ -25,7 +25,9 @@ jobs:
         run: |
           mkdir _site
           cp index.html _site/
-          for d in */[0-9][0-9][AS][WS]; do [ -d "$d" ] && cp -r "$d" _site/; done
+          # 상품반응도_26AW/26AW -> /26AW/ , 매장SKU조사/26AW -> /sku-26AW/
+          for d in 상품반응도_*/[0-9][0-9][AS][WS]; do [ -d "$d" ] && cp -r "$d" _site/; done
+          for d in 매장SKU조사/[0-9][0-9][AS][WS]; do [ -d "$d" ] && cp -r "$d" "_site/sku-$(basename "$d")"; done
           touch _site/.nojekyll
           printf 'User-agent: *\nDisallow: /\n' > _site/robots.txt
       - uses: actions/configure-pages@v5

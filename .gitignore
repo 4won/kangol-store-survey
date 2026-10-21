@@ -1,3 +1,5 @@
 node_modules/
 *.log
 reports/
+~$*
+매장SKU조사/*.xlsx

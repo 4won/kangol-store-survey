@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>매장 SKU 조사</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+/* 레이아웃: 상단 고정 단계 탭 + 한 화면 한 단계. 품번 선택은 입력하면 바로 검색되는 칸 */
+:root{
+  --bg:#f3f4f7; --card:#ffffff; --fg:#161b26; --mute:#5d6577; --line:#dde0e8;
+  --accent:#1F3A5C; --accent-fg:#ffffff; --accent-soft:#e3e8f0;
+  --ok:#17803d; --bad:#b42318; --field:#fbfbfd;
+  --font:'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10131b; --card:#181c27; --fg:#eceef4; --mute:#9aa2b5; --line:#2b3142;
+    --accent:#8fa9d4; --accent-fg:#0d1330; --accent-soft:#232a4d;
+    --ok:#4ade80; --bad:#f87171; --field:#12151f; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10131b; --card:#181c27; --fg:#eceef4; --mute:#9aa2b5; --line:#2b3142;
+  --accent:#8fa9d4; --accent-fg:#0d1330; --accent-soft:#232a4d;
+  --ok:#4ade80; --bad:#f87171; --field:#12151f; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.6}
+.wrap{max-width:780px;margin:0 auto;padding-inline:16px;padding-block:0 96px}
+header.top{padding-block:20px 12px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--accent)}
+h1{margin:2px 0 4px;font-size:24px;font-weight:900;line-height:1.25;text-wrap:balance}
+h2{margin:0;font-size:19px;font-weight:700;text-wrap:balance}
+h3{margin:0;font-size:15px;font-weight:700}
+.sub{color:var(--mute);font-size:13px}
+.lead{font-size:15.5px;line-height:1.6}
+nav.steps{position:sticky;top:0;z-index:5;background:var(--bg);padding-block:8px;display:flex;gap:6px;overflow-x:auto;border-bottom:1px solid var(--line);scrollbar-width:none}
+nav.steps::-webkit-scrollbar{display:none}
+nav.steps button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--mute);font:inherit;font-size:13px;font-weight:500;padding:6px 12px;border-radius:999px;cursor:pointer}
+nav.steps button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:700}
+nav.steps button.done::before{content:"✓ ";color:var(--ok)}
+nav.steps button.on.done::before{color:var(--accent-fg)}
+nav.steps button:disabled{opacity:.45;cursor:not-allowed}
+.bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;background:var(--accent);transition:width .25s}
+section.pane{display:grid;gap:16px;padding-top:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:14px}
+.q{display:grid;gap:6px;min-width:0}
+.q>.lab{font-weight:500;font-size:14px}
+.hint{color:var(--mute);font-size:12.5px;font-weight:400}
+.req{color:var(--bad)}
+input[type=text],input[type=number],input[type=search],select,textarea{width:100%;font:inherit;font-size:16px;color:var(--fg);background:var(--field);border:1px solid var(--line);border-radius:8px;padding:9px 11px;min-width:0}
+textarea{min-height:84px;resize:vertical}
+select{min-height:44px}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.row2{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opts button{font:inherit;font-size:13.5px;border:1px solid var(--line);background:var(--field);color:var(--fg);border-radius:8px;padding:8px 12px;cursor:pointer;min-height:40px;text-align:left}
+.opts button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:700}
+.opts.col{flex-direction:column}.opts.col button{width:100%}
+.lvl{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.lvl button{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--field);color:var(--fg);border-radius:8px;padding:8px 2px;cursor:pointer;min-height:48px;line-height:1.25}
+.lvl button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:700}
+.nav{display:flex;justify-content:space-between;gap:10px;margin-top:4px}
+.btn{font:inherit;font-weight:700;font-size:15px;border-radius:9px;padding:11px 20px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+.btn.pri{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.sm{font-size:13px;padding:6px 12px;font-weight:500}
+.btn:disabled{opacity:.5;cursor:default}
+.dp{display:grid;grid-template-columns:62px 1fr 1fr 96px;gap:10px;align-items:center}
+.dp .cat{font-weight:700}
+.dp small{display:block;color:var(--mute);font-size:11.5px}
+.diff{font-size:13px;font-weight:700;text-align:center;border-radius:8px;padding:6px 4px;background:var(--accent-soft);color:var(--accent)}
+.diff.over{background:#f2dcd9;color:#8a2a22}.diff.short{background:#f4e8c8;color:#6b5010}
+@media (max-width:520px){.dp{grid-template-columns:1fr 1fr}.dp .cat{grid-column:1/3}.diff{grid-column:1/3}}
+.slot{position:relative;display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center}
+.slot .n{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--mute);pointer-events:none}
+.slot input{padding-left:30px}
+.slot.sel input{background:var(--accent-soft);font-weight:500}
+.slot .x{border:1px solid var(--line);background:var(--card);color:var(--mute);border-radius:8px;width:40px;height:40px;font-size:18px;cursor:pointer}
+.dd{position:absolute;left:0;right:46px;top:100%;z-index:10;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.14);max-height:260px;overflow:auto;margin-top:2px}
+.dd button{display:block;width:100%;text-align:left;font:inherit;font-size:14px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--fg);padding:9px 12px;cursor:pointer}
+.dd button:last-child{border-bottom:0}.dd button:hover,.dd button.hi{background:var(--accent-soft)}
+.dd small{color:var(--mute)}.dd .none{padding:10px 12px;color:var(--mute);font-size:13px}
+.notice{border:1px dashed var(--line);border-radius:10px;padding:18px;color:var(--mute);text-align:center;font-size:14px}
+.banner{background:var(--accent-soft);color:var(--fg);border-radius:8px;padding:10px 14px;font-size:13px;margin-top:6px}
+.sum dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0;font-size:14px}
+.sum dt{color:var(--mute)}.sum dd{margin:0;font-variant-numeric:tabular-nums}
+.err{color:var(--bad);font-weight:500;font-size:14px}
+.ok{color:var(--ok);font-weight:500}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:9px;font-size:14px;z-index:20;max-width:90vw}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+.secret{display:inline-block;font-size:11.5px;font-weight:700;color:var(--bad);border:1px solid var(--bad);border-radius:99px;padding:0 8px;margin-left:6px;vertical-align:1px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 id="ttl"></h1>
+    <div class="sub" id="lead"></div>
+    <div class="banner" id="testbanner" hidden>테스트 모드입니다. 제출하면 서버로 전송되지 않고 JSON 파일로 저장됩니다.</div>
+  </header>
+  <div id="root"><div class="notice">불러오는 중...</div></div>
+</div>
+<input class="hp" id="hp" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
+<div class="toast" id="toast" hidden></div>
+<script src="config.js"></script>
+<script>
+(function(){
+const CFG=window.SURVEY_CONFIG||{};
+const CATS=['의류','가방','모자'];
+const MAXN=10, INITN=3;
+const LEVELS=['너무 많다','많다','적당하다','모자르다','너무 모자르다'];
+const OVER=[['store','DP하지 않고 창고에 적재'],['dp','넘치더라도 매장에 추가 DP'],['etc','기타 (직접 입력)']];
+const DIR=[['remove','매장에서 제거 (반품 등)'],['keep','매장 내 보유 (창고 보관 등)'],['more','과다하지만 추가 DP (더 많이 보여줘야 함)']];
+const STEPS=['매장 선택','DP 현황','운영 실태','제거 품번','추가 품번','제출'];
+const DKEY='sku-survey-draft-'+(CFG.season||'');
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const toast=m=>{const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,2600)};
+const uniq=a=>[...new Set(a)];
+const won=n=>n?Number(n).toLocaleString('ko-KR')+'원':'';
+function uuid(){return 'K'+Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
+function slots(){return Array.from({length:INITN},()=>({no:'',q:''}))}
+function blank(){const o={store:{},sku:{},opinion:{},over:{},dir:'',remove:{},add:{},sid:uuid()};CATS.forEach(c=>{o.sku[c]={};o.remove[c]=slots();o.add[c]=slots()});return o}
+let stores=[],P=[],byNo={};
+let st=blank();
+try{const d=JSON.parse(localStorage.getItem(DKEY)||'null');if(d&&d.store){st=Object.assign(blank(),d);CATS.forEach(c=>{if(!st.remove[c]||!st.remove[c].length)st.remove[c]=slots();if(!st.add[c]||!st.add[c].length)st.add[c]=slots()})}}catch(e){}
+let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(DKEY,JSON.stringify(st))}catch(e){}},300)}
+let ui={step:0,sent:null,busy:false,open:null};
+
+/* ---------- 공통 위젯 ---------- */
+function q(label,body,hint,req){return `<div class="q"><div class="lab">${label}${req?' <span class="req">*</span>':''}${hint?` <span class="hint">${hint}</span>`:''}</div>${body}</div>`}
+function select(id,list,val,ph,dis){return `<select id="${id}" ${dis?'disabled':''}><option value="">${ph}</option>${list.map(o=>`<option ${o===val?'selected':''}>${esc(o)}</option>`).join('')}</select>`}
+
+/* ---------- 단계 ---------- */
+function stepStore(){
+  const s=st.store,types=uniq(stores.map(x=>x.type)),groups=s.type?uniq(stores.filter(x=>x.type===s.type).map(x=>x.group)):[],names=s.group?stores.filter(x=>x.type===s.type&&x.group===s.group).map(x=>x.name):[];
+  return `<h2>매장 선택</h2><div class="card">
+${q('① 채널형태',select('sel_type',types,s.type,'선택해 주세요'),'',1)}
+${q('② 채널계열',select('sel_group',groups,s.group,s.type?'선택해 주세요':'먼저 채널형태를 선택하세요',!s.type),'',1)}
+${q('③ 매장명',select('sel_name',names,s.name,s.group?'선택해 주세요':'먼저 채널계열을 선택하세요',!s.group),'',1)}
+${s.name?'':'<div class="sub">매장을 선택해야 다음 단계로 넘어갈 수 있습니다.</div>'}</div>`}
+
+function dpRow(c){
+  const v=st.sku[c]||{},a=v.actual,b=v.ideal,d=(a!=null&&a!==''&&b!=null&&b!=='')?Number(a)-Number(b):null;
+  const dl=d==null?'차이 -':d>0?`과다 +${d}`:d<0?`부족 ${d}`:'적정';
+  return `<div class="dp"><div class="cat">${c}</div>
+<div><small>실제 DP수</small><input type="number" inputmode="numeric" min="0" data-p="sku.${c}.actual" value="${esc(a??'')}"></div>
+<div><small>적정 DP수</small><input type="number" inputmode="numeric" min="0" data-p="sku.${c}.ideal" value="${esc(b??'')}"></div>
+<div class="diff ${d>0?'over':d<0?'short':''}" id="diff_${c}">${dl}</div></div>`}
+function stepDp(){return `<h2>매장 DP 현황</h2>
+<div class="card"><h3>1. 매장 SKU <span class="hint">(AW시즌 현재 기준으로 작성해 주세요)</span></h3><div class="sub">실제 DP수 = 지금 매장에 진열 중인 품번(SKU) 수, 적정 DP수 = 매장에서 보시기에 적당한 품번 수</div>${CATS.map(dpRow).join('')}</div>
+<div class="card"><h3>2. 매장 운영 SKU 수에 대한 의견</h3>${CATS.map(c=>q(c,`<div class="lvl">${LEVELS.map((l,i)=>`<button type="button" data-lv="${c}|${i+1}" class="${st.opinion[c]===i+1?'on':''}">${i+1}) ${l}</button>`).join('')}</div>`)).join('')}</div>`}
+
+function stepOps(){const o=st.over||{};return `<h2>운영 실태와 방향</h2>
+<div class="card"><h3>3. 과다 SKU에 대한 운영 실태 <span class="secret">비공개</span></h3><div class="sub">솔직하게 말씀해 주세요.</div>
+<div class="opts col">${OVER.map(([k,l],i)=>`<button type="button" data-ov="${k}" class="${o.choice===k?'on':''}">${i+1}) ${esc(l)}</button>`).join('')}</div>
+${o.choice==='etc'?`<input type="text" data-p="over.other" value="${esc(o.other||'')}" placeholder="운영 방식을 직접 입력해 주세요">`:''}</div>
+<div class="card"><h3>4. 적정DP수 − 실제DP수 차이에 대해 하고 싶은 방향</h3>
+<div class="opts col">${DIR.map(([k,l],i)=>`<button type="button" data-dir="${k}" class="${st.dir===k?'on':''}">${i+1}) ${esc(l)}</button>`).join('')}</div></div>`}
+
+/* ---------- 품번 검색 선택 ---------- */
+function chosen(c,kind){return st[kind][c].map(x=>x.no).filter(Boolean)}
+function otherKind(k){return k==='remove'?'add':'remove'}
+function slotHtml(kind,c,i){
+  const x=st[kind][c][i],p=x.no?byNo[x.no]:null,val=p?`${p.no} · ${p.name}`:(x.q||'');
+  return `<div class="slot ${p?'sel':''}" data-kind="${kind}" data-cat="${c}" data-i="${i}"><span class="n">${i+1}</span>
+<input type="search" class="ac" value="${esc(val)}" placeholder="품번 또는 상품명 일부를 입력 (예: ${c==='가방'?'TB40':c==='모자'?'K38':'RT18'})" autocomplete="off" ${p?'readonly':''}>
+<button type="button" class="x" data-clear="1" aria-label="지우기">×</button><div class="dd" hidden></div></div>`}
+function pickStep(kind,title,sub){
+  return `<h2>${title}</h2><div class="sub">${sub}</div>`+CATS.map(c=>{const n=st[kind][c].length,sel=chosen(c,kind).length;
+    return `<div class="card"><h3>${c} <span class="hint">선택 ${sel}개 · 최대 ${MAXN}개</span></h3>${st[kind][c].map((_,i)=>slotHtml(kind,c,i)).join('')}${n<MAXN?`<button type="button" class="btn sm" data-addslot="${kind}|${c}">+ 칸 추가</button>`:''}</div>`}).join('')}
+function stepRemove(){return pickStep('remove','5. 제거하고 싶은 품번','AW 신상품 기준입니다. 품번이나 상품명 일부만 입력해도 검색됩니다. 의류·가방·모자 각각 최대 10개까지 고를 수 있습니다.')}
+function stepAdd(){return pickStep('add','6. 추가로 받고 싶은 품번','AW 신상품 기준입니다. 품번이나 상품명 일부만 입력해도 검색됩니다. 제거 품번으로 고른 상품은 목록에 나오지 않습니다.')}
+
+function matches(kind,c,text,cur){
+  const toks=text.toLowerCase().split(/\s+/).filter(Boolean);if(!toks.length)return [];
+  const skip=new Set([...chosen(c,kind),...chosen(c,otherKind(kind))].filter(n=>n!==cur));
+  return P.filter(p=>p.cat===c&&!skip.has(p.no)).filter(p=>{const hay=(p.no+' '+p.name+' '+p.sub).toLowerCase();return toks.every(t=>hay.includes(t))}).slice(0,8)}
+function showDd(slot){
+  const kind=slot.dataset.kind,c=slot.dataset.cat,i=+slot.dataset.i,inp=slot.querySelector('input'),dd=slot.querySelector('.dd'),text=inp.value.trim();
+  if(!text){dd.hidden=true;return}
+  const m=matches(kind,c,text,st[kind][c][i].no);
+  dd.innerHTML=m.length?m.map(p=>`<button type="button" data-pick="${esc(p.no)}"><b>${esc(p.no)}</b> ${esc(p.name)} <small>· ${esc(p.sub)}${p.price?' · '+won(p.price):''}</small></button>`).join(''):`<div class="none">'${esc(text)}'에 맞는 ${c} 상품이 없습니다.</div>`;
+  dd.hidden=false}
+
+/* ---------- 제출 ---------- */
+function build(){
+  const rows=kind=>CATS.flatMap(c=>chosen(c,kind).map(no=>({cat:c,no,name:byNo[no]?.name||''})));
+  return {sid:st.sid,season:CFG.season,at:new Date().toISOString(),store:st.store,sku:st.sku,opinion:st.opinion,over:st.over||{},dir:st.dir||'',remove:rows('remove'),add:rows('add'),hp:$('#hp').value}}
+function missing(){const m=[];if(!st.store.name)m.push('매장');if(CATS.some(c=>['actual','ideal'].some(k=>st.sku[c][k]===''||st.sku[c][k]==null)))m.push('1. 매장 SKU (실제·적정 DP수 6칸 모두)');return m}
+function stepSubmit(){
+  if(ui.sent)return `<div class="card"><h2>제출 완료</h2><div class="ok">${esc(ui.sent)} 의견이 제출되었습니다. 감사합니다.</div><div class="sub">수정해서 같은 매장으로 다시 제출하면 가장 최근 응답이 반영됩니다.</div><button type="button" class="btn" data-again="1">내용 수정하기</button></div>`;
+  const b=build(),miss=missing(),dirL=(DIR.find(x=>x[0]===st.dir)||[])[1];
+  return `<h2>제출 전 확인</h2><div class="card sum"><dl>
+<dt>매장</dt><dd>${esc(st.store.name||'-')}${st.store.type?` (${esc(st.store.type)} · ${esc(st.store.group)})`:''}</dd>
+${CATS.map(c=>{const v=st.sku[c];return `<dt>${c} DP</dt><dd>실제 ${v.actual??'-'} / 적정 ${v.ideal??'-'}</dd>`}).join('')}
+<dt>운영 방향</dt><dd>${esc(dirL||'-')}</dd>
+<dt>제거 요청 품번</dt><dd>${b.remove.length}개</dd><dt>추가 요청 품번</dt><dd>${b.add.length}개</dd></dl>
+${miss.length?`<div class="err">필수 항목을 입력해 주세요: ${miss.join(', ')}</div>`:''}
+<div id="subErr" class="err"></div>
+<button type="button" class="btn pri" data-submit="1" ${miss.length||ui.busy?'disabled':''}>${ui.busy?'제출 중...':'제출하기'}</button></div>`}
+const RENDER=[stepStore,stepDp,stepOps,stepRemove,stepAdd,stepSubmit];
+function stepDone(i){const s=st;return [!!s.store.name,CATS.every(c=>s.sku[c].actual!==''&&s.sku[c].actual!=null&&s.sku[c].ideal!==''&&s.sku[c].ideal!=null),!!(s.over&&s.over.choice)||!!s.dir,CATS.some(c=>chosen(c,'remove').length),CATS.some(c=>chosen(c,'add').length),!!ui.sent][i]}
+function render(){
+  const nav=`<nav class="steps">${STEPS.map((s,i)=>`<button type="button" data-step="${i}" ${i>0&&!st.store.name?'disabled':''} class="${ui.step===i?'on':''} ${stepDone(i)?'done':''}">${s}</button>`).join('')}</nav><div class="bar"><i style="width:${Math.round((ui.step+1)/STEPS.length*100)}%"></i></div>`;
+  const nextBtn=ui.step<STEPS.length-1;
+  $('#root').innerHTML=nav+`<section class="pane">${RENDER[ui.step]()}<div class="nav"><button type="button" class="btn" data-go="-1" ${ui.step?'':'disabled'}>이전</button>${nextBtn?`<button type="button" class="btn pri" data-go="1" ${st.store.name?'':'disabled'}>다음</button>`:'<span></span>'}</div></section>`}
+
+/* ---------- 이벤트 ---------- */
+function setp(p,v){const ks=p.split('.');let o=st;for(let i=0;i<ks.length-1;i++){if(o[ks[i]]==null)o[ks[i]]={};o=o[ks[i]]}o[ks[ks.length-1]]=v;save()}
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.dataset&&t.dataset.p){const v=t.type==='number'?(t.value===''?'':Number(t.value)):t.value;setp(t.dataset.p,v);
+    const m=t.dataset.p.match(/^sku\.(.+)\.(actual|ideal)$/);if(m){const c=m[1],a=st.sku[c].actual,b=st.sku[c].ideal,el=$('#diff_'+c);if(el){const ok=a!==''&&a!=null&&b!==''&&b!=null,d=ok?a-b:null;el.textContent=d==null?'차이 -':d>0?`과다 +${d}`:d<0?`부족 ${d}`:'적정';el.className='diff '+(d>0?'over':d<0?'short':'')}}return}
+  if(t.classList&&t.classList.contains('ac')){const sl=t.closest('.slot');st[sl.dataset.kind][sl.dataset.cat][+sl.dataset.i].q=t.value;save();showDd(sl)}
+});
+document.addEventListener('change',e=>{
+  const id=e.target.id,v=e.target.value;
+  if(id==='sel_type'){st.store={type:v};save();render()}
+  if(id==='sel_group'){st.store={type:st.store.type,group:v};save();render()}
+  if(id==='sel_name'){st.store.name=v;save();render()}
+});
+document.addEventListener('keydown',e=>{
+  const t=e.target;if(!(t.classList&&t.classList.contains('ac')))return;
+  const sl=t.closest('.slot'),dd=sl.querySelector('.dd');
+  if(e.key==='Enter'){e.preventDefault();const b=dd.querySelector('button');if(b)b.click()}
+  if(e.key==='Escape')dd.hidden=true;
+});
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('button');
+  if(!e.target.closest('.slot'))document.querySelectorAll('.slot .dd').forEach(d=>d.hidden=true);
+  if(!b)return;const d=b.dataset;
+  if(d.pick){const sl=b.closest('.slot'),s=st[sl.dataset.kind][sl.dataset.cat][+sl.dataset.i];s.no=d.pick;s.q='';save();render();return}
+  if(d.clear){const sl=b.closest('.slot'),arr=st[sl.dataset.kind][sl.dataset.cat],i=+sl.dataset.i;arr[i]={no:'',q:''};if(arr.length>INITN&&i>=INITN)arr.splice(i,1);save();render();return}
+  if(d.addslot){const [k,c]=d.addslot.split('|');if(st[k][c].length<MAXN){st[k][c].push({no:'',q:''});save();render()}return}
+  if(d.lv){const [c,v]=d.lv.split('|');st.opinion[c]=st.opinion[c]===+v?undefined:+v;save();b.parentElement.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b&&st.opinion[c]!==undefined));return}
+  if(d.ov){st.over.choice=st.over.choice===d.ov?'':d.ov;save();render();return}
+  if(d.dir){st.dir=st.dir===d.dir?'':d.dir;save();render();return}
+  if(d.step!==undefined){if(+d.step>0&&!st.store.name){toast('매장을 먼저 선택해 주세요');return}ui.step=+d.step;render();scrollTo(0,0);return}
+  if(d.go){if(+d.go>0&&!st.store.name){toast('매장을 먼저 선택해 주세요');return}ui.step=Math.max(0,Math.min(STEPS.length-1,ui.step+ +d.go));render();scrollTo(0,0);return}
+  if(d.again){ui.sent=null;ui.step=0;st.sid=uuid();save();render();return}
+  if(d.submit)submit(b);
+});
+async function submit(b){
+  const er=$('#subErr');er.textContent='';ui.busy=true;b.disabled=true;b.textContent='제출 중...';
+  const payload=build();
+  try{
+    if(!CFG.endpoint){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(payload,null,1)],{type:'application/json'}));a.download=`sku_${payload.store.name||'test'}_${payload.sid}.json`;document.body.appendChild(a);a.click();a.remove()}
+    else{const r=await fetch(CFG.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});const j=await r.json();if(!j.ok)throw new Error(j.error||'제출 실패')}
+    ui.sent=payload.store.name;clearTimeout(saveT);try{localStorage.removeItem(DKEY)}catch(x){}
+  }catch(x){er.textContent='제출하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요. 계속 안 되면 아래 버튼으로 파일을 저장해 담당자에게 보내 주세요.';
+    er.insertAdjacentHTML('afterend','<button type="button" class="btn sm" id="bk">응답 파일로 저장</button>');
+    $('#bk').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(payload,null,1)],{type:'application/json'}));a.download=`sku_${payload.store.name}_${payload.sid}.json`;document.body.appendChild(a);a.click();a.remove()};
+    ui.busy=false;b.disabled=false;b.textContent='제출하기';return}
+  ui.busy=false;render();scrollTo(0,0);
+}
+
+/* ---------- 시작 ---------- */
+$('#eyebrow').textContent=(CFG.season||'')+' 매장 SKU 조사';
+$('#ttl').textContent=CFG.title||'매장 SKU 조사';
+$('#lead').className='lead';$('#lead').textContent=(CFG.deadline?CFG.deadline+' · ':'')+(CFG.lead||'');
+if(!CFG.endpoint)$('#testbanner').hidden=false;
+Promise.all([fetch('data/stores.json').then(r=>r.json()),fetch('data/products.json').then(r=>r.json())])
+ .then(([s,p])=>{stores=s;P=p.items;byNo=Object.fromEntries(P.map(x=>[x.no,x]));
+   if(st.store.name&&!stores.some(x=>x.name===st.store.name))st.store={};
+   CATS.forEach(c=>['remove','add'].forEach(k=>st[k][c].forEach(x=>{if(x.no&&!byNo[x.no])x.no=''})));
+   render()})
+ .catch(()=>{$('#root').innerHTML='<div class="notice">데이터를 불러오지 못했습니다. 새로고침해 주세요.</div>'});
+})();
+</script>
+</body>
+</html>
