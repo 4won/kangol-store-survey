@@ -151,14 +151,14 @@ let ui={step:0,cat:'가방',sent:null,busy:false};
 const LKEY=DKEY+'-last';
 function lastMap(){try{return JSON.parse(localStorage.getItem(LKEY)||'{}')}catch(e){return{}}}
 function rememberSid(store,sid){try{const m=lastMap();m[store]=sid;localStorage.setItem(LKEY,JSON.stringify(m))}catch(e){}}
-function prevSid(){return CFG.endpoint&&st.store.name?lastMap()[st.store.name]:''}
+function prevSid(){return CFG.endpoint&&st.store.name?st.store.name:''}
 async function loadPrev(auto){
-  const sid=prevSid();if(!sid)return false;
-  try{const r=await fetch(CFG.endpoint+(CFG.endpoint.indexOf('?')>=0?'&':'?')+'action=load&token='+encodeURIComponent(sid));const j=await r.json();
+  const nm=prevSid();if(!nm)return false;
+  try{const r=await fetch(CFG.endpoint+(CFG.endpoint.indexOf('?')>=0?'&':'?')+'action=load&store='+encodeURIComponent(nm));const j=await r.json();
     if(j&&j.ok&&j.data){applyPrev(j.data);ui.sent=null;ui.loaded=st.store.name;ui.canPrev=false;save();render();toast('이전에 제출한 내용을 불러왔습니다. 수정 후 다시 제출하면 덮어씁니다.');return true}}catch(e){}
-  if(!auto)toast('이전 제출 내용을 불러오지 못했습니다.');return false}
+  if(!auto)toast('이 매장의 이전 제출 내용이 없습니다.');return false}
 function offerPrev(){if(!prevSid()||ui.loaded===st.store.name)return;if(isBlank())loadPrev(true);else{ui.canPrev=true;render()}}
-function prevNotice(){return (ui.canPrev&&st.store.name&&prevSid()&&ui.loaded!==st.store.name)?'<div class="card"><div><b>이 기기에서 이전에 제출한 기록이 있습니다.</b></div><div class="sub">불러오면 지금 입력한 내용이 이전 제출 내용으로 바뀝니다. 수정 후 다시 제출하면 이전 응답을 덮어씁니다.</div><button type="button" class="btn" data-loadprev="1">이전 제출 내용 불러오기</button></div>':''}
+function prevNotice(){return (ui.canPrev&&st.store.name&&prevSid()&&ui.loaded!==st.store.name)?'<div class="card"><div><b>이 매장이 이전에 제출한 내용이 있으면 불러올 수 있습니다.</b></div><div class="sub">불러오면 지금 입력한 내용이 이전 제출 내용으로 바뀝니다. 수정 후 다시 제출하면 이전 응답을 덮어씁니다.</div><button type="button" class="btn" data-loadprev="1">이전 제출 내용 불러오기</button></div>':''}
 
 function applyPrev(d){const o=blank();o.store=Object.assign({},d.store);o.season=Object.assign({},d.seasonQ);(d.products||[]).forEach(p=>{const v={};if(p.design)v.design=p.design;if(p.price_score)v.price=p.price_score;if(p.comment)v.comment=p.comment;o.products[p.no]=v});(d.prices||[]).forEach(p=>{o.prices[p.sub]={min:p.min||undefined,max:p.max||undefined,vsCur:p.vsCur||undefined,vsComp:p.vsComp||undefined,note:p.note||undefined}});const idx={};(d.comps||[]).forEach(c=>{const g=c.grp,i=idx[g]=(idx[g]===undefined?0:idx[g]+1);(o.comps[g]=o.comps[g]||{})[i]={brand:c.brand,range:c.range,strength:c.strength,promo:c.promo,reaction:c.reaction}});o.extra=d.extra||'';st=o}
 function isBlank(){return !Object.keys(st.products||{}).length&&!Object.keys(st.season||{}).some(k=>st.season[k])&&!Object.keys(st.prices||{}).length&&!Object.keys(st.comps||{}).length&&!(st.extra||'').trim()}

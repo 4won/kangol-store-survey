@@ -137,14 +137,14 @@ let ui={step:0,sent:null,busy:false,open:null};
 const LKEY=DKEY+'-last';
 function lastMap(){try{return JSON.parse(localStorage.getItem(LKEY)||'{}')}catch(e){return{}}}
 function rememberSid(store,sid){try{const m=lastMap();m[store]=sid;localStorage.setItem(LKEY,JSON.stringify(m))}catch(e){}}
-function prevSid(){return CFG.endpoint&&st.store.name?lastMap()[st.store.name]:''}
+function prevSid(){return CFG.endpoint&&st.store.name?st.store.name:''}
 async function loadPrev(auto){
-  const sid=prevSid();if(!sid)return false;
-  try{const r=await fetch(CFG.endpoint+(CFG.endpoint.indexOf('?')>=0?'&':'?')+'action=load&token='+encodeURIComponent(sid));const j=await r.json();
+  const nm=prevSid();if(!nm)return false;
+  try{const r=await fetch(CFG.endpoint+(CFG.endpoint.indexOf('?')>=0?'&':'?')+'action=load&store='+encodeURIComponent(nm));const j=await r.json();
     if(j&&j.ok&&j.data){applyPrev(j.data);ui.sent=null;ui.loaded=st.store.name;ui.canPrev=false;save();render();toast('이전에 제출한 내용을 불러왔습니다. 수정 후 다시 제출하면 덮어씁니다.');return true}}catch(e){}
-  if(!auto)toast('이전 제출 내용을 불러오지 못했습니다.');return false}
+  if(!auto)toast('이 매장의 이전 제출 내용이 없습니다.');return false}
 function offerPrev(){if(!prevSid()||ui.loaded===st.store.name)return;if(isBlank())loadPrev(true);else{ui.canPrev=true;render()}}
-function prevNotice(){return (ui.canPrev&&st.store.name&&prevSid()&&ui.loaded!==st.store.name)?'<div class="card"><div><b>이 기기에서 이전에 제출한 기록이 있습니다.</b></div><div class="sub">불러오면 지금 입력한 내용이 이전 제출 내용으로 바뀝니다. 수정 후 다시 제출하면 이전 응답을 덮어씁니다.</div><button type="button" class="btn" data-loadprev="1">이전 제출 내용 불러오기</button></div>':''}
+function prevNotice(){return (ui.canPrev&&st.store.name&&prevSid()&&ui.loaded!==st.store.name)?'<div class="card"><div><b>이 매장이 이전에 제출한 내용이 있으면 불러올 수 있습니다.</b></div><div class="sub">불러오면 지금 입력한 내용이 이전 제출 내용으로 바뀝니다. 수정 후 다시 제출하면 이전 응답을 덮어씁니다.</div><button type="button" class="btn" data-loadprev="1">이전 제출 내용 불러오기</button></div>':''}
 
 function applyPrev(d){const o=blank();o.store=Object.assign({},d.store);CATS.forEach(c=>{o.sku[c]=Object.assign({},(d.sku||{})[c]);const g=rows=>{const a=(rows||[]).filter(x=>x.cat===c).map(x=>({no:x.no,q:''}));while(a.length<INITN)a.push({no:'',q:''});return a};o.remove[c]=g(d.remove);o.add[c]=g(d.add)});o.opinion=Object.assign({},d.opinion);o.over=Object.assign({},d.over);o.dir=d.dir||'';o.free=d.free||'';st=o}
 function isBlank(){return CATS.every(c=>{const v=st.sku[c]||{};return(v.actual===undefined||v.actual==='')&&(v.ideal===undefined||v.ideal==='')})&&!Object.keys(st.opinion||{}).some(k=>st.opinion[k])&&!(st.over&&st.over.choice)&&!st.dir&&!(st.free||'').trim()&&CATS.every(c=>!chosen(c,'remove').length&&!chosen(c,'add').length)}

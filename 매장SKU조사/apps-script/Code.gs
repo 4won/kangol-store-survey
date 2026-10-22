@@ -26,8 +26,19 @@ const DIR = { remove: '매장에서 제거(반품 등)', keep: '매장 내 보�
 /** GET ?action=load&token=<제출ID>  (sid 라는 이름은 Google 이 막아 400 이 나므로 token 사용) : 그 제출ID 를 아는 사람(= 이전에 그 기기로 제출한 매장)에게만 해당 매장의 최신 응답을 돌려줍니다. */
 function doGet(e) {
   const p = (e && e.parameter) || {};
+  if (p.action === 'load' && p.store) return out_(loadByStore_(String(p.store)));
   if (p.action === 'load' && p.token) return out_(loadPrev_(String(p.token)));
   return out_({ ok: true, msg: 'store sku survey endpoint' });
+}
+/** 매장명으로 그 매장의 최신 응답을 돌려줌 (기기와 무관). */
+function loadByStore_(name) {
+  const sh = SpreadsheetApp.getActive().getSheetByName('원본JSON');
+  if (!sh || sh.getLastRow() < 2) return { ok: true, data: null };
+  const vals = sh.getDataRange().getValues();
+  for (let i = vals.length - 1; i >= 1; i--) if (vals[i][2] === name) {
+    try { return { ok: true, store: name, at: vals[i][1], data: JSON.parse(vals[i].slice(3).join('')) }; } catch (err) { return { ok: false, error: 'parse' }; }
+  }
+  return { ok: true, data: null };
 }
 function loadPrev_(sid) {
   const sh = SpreadsheetApp.getActive().getSheetByName('원본JSON');
