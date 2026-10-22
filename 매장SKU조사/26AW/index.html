@@ -133,6 +133,23 @@ try{const d=JSON.parse(localStorage.getItem(DKEY)||'null');if(d&&d.store){st=Obj
 let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(DKEY,JSON.stringify(st))}catch(e){}},300)}
 let ui={step:0,sent:null,busy:false,open:null};
 
+/* ---------- 이전 제출 불러오기 (공통 규칙): 이 기기에서 제출한 매장의 제출ID 로만 서버에서 불러옴 ---------- */
+const LKEY=DKEY+'-last';
+function lastMap(){try{return JSON.parse(localStorage.getItem(LKEY)||'{}')}catch(e){return{}}}
+function rememberSid(store,sid){try{const m=lastMap();m[store]=sid;localStorage.setItem(LKEY,JSON.stringify(m))}catch(e){}}
+function prevSid(){return CFG.endpoint&&st.store.name?lastMap()[st.store.name]:''}
+async function loadPrev(auto){
+  const sid=prevSid();if(!sid)return false;
+  try{const r=await fetch(CFG.endpoint+(CFG.endpoint.indexOf('?')>=0?'&':'?')+'action=load&sid='+encodeURIComponent(sid));const j=await r.json();
+    if(j&&j.ok&&j.data){applyPrev(j.data);ui.sent=null;ui.loaded=st.store.name;ui.canPrev=false;save();render();toast('이전에 제출한 내용을 불러왔습니다. 수정 후 다시 제출하면 덮어씁니다.');return true}}catch(e){}
+  if(!auto)toast('이전 제출 내용을 불러오지 못했습니다.');return false}
+function offerPrev(){if(!prevSid()||ui.loaded===st.store.name)return;if(isBlank())loadPrev(true);else{ui.canPrev=true;render()}}
+function prevNotice(){return (ui.canPrev&&st.store.name&&prevSid()&&ui.loaded!==st.store.name)?'<div class="card"><div><b>이 기기에서 이전에 제출한 기록이 있습니다.</b></div><div class="sub">불러오면 지금 입력한 내용이 이전 제출 내용으로 바뀝니다. 수정 후 다시 제출하면 이전 응답을 덮어씁니다.</div><button type="button" class="btn" data-loadprev="1">이전 제출 내용 불러오기</button></div>':''}
+
+function applyPrev(d){const o=blank();o.store=Object.assign({},d.store);CATS.forEach(c=>{o.sku[c]=Object.assign({},(d.sku||{})[c]);const g=rows=>{const a=(rows||[]).filter(x=>x.cat===c).map(x=>({no:x.no,q:''}));while(a.length<INITN)a.push({no:'',q:''});return a};o.remove[c]=g(d.remove);o.add[c]=g(d.add)});o.opinion=Object.assign({},d.opinion);o.over=Object.assign({},d.over);o.dir=d.dir||'';o.free=d.free||'';st=o}
+function isBlank(){return CATS.every(c=>{const v=st.sku[c]||{};return(v.actual===undefined||v.actual==='')&&(v.ideal===undefined||v.ideal==='')})&&!Object.keys(st.opinion||{}).some(k=>st.opinion[k])&&!(st.over&&st.over.choice)&&!st.dir&&!(st.free||'').trim()&&CATS.every(c=>!chosen(c,'remove').length&&!chosen(c,'add').length)}
+
+
 /* ---------- 공통 위젯 ---------- */
 function q(label,body,hint,req){return `<div class="q"><div class="lab">${label}${req?' <span class="req">*</span>':''}${hint?` <span class="hint">${hint}</span>`:''}</div>${body}</div>`}
 function select(id,list,val,ph,dis){return `<select id="${id}" ${dis?'disabled':''}><option value="">${ph}</option>${list.map(o=>`<option ${o===val?'selected':''}>${esc(o)}</option>`).join('')}</select>`}
@@ -144,7 +161,7 @@ function stepStore(){
 ${q('① 채널형태',select('sel_type',types,s.type,'선택해 주세요'),'',1)}
 ${q('② 채널계열',select('sel_group',groups,s.group,s.type?'선택해 주세요':'먼저 채널형태를 선택하세요',!s.type),'',1)}
 ${q('③ 매장명',select('sel_name',names,s.name,s.group?'선택해 주세요':'먼저 채널계열을 선택하세요',!s.group),'',1)}
-${s.name?'':'<div class="sub">매장을 선택해야 다음 단계로 넘어갈 수 있습니다.</div>'}</div>`}
+${s.name?'':'<div class="sub">매장을 선택해야 다음 단계로 넘어갈 수 있습니다.</div>'}</div>${prevNotice()}`}
 
 function dpRow(c){
   const v=st.sku[c]||{},a=v.actual,b=v.ideal,d=(a!=null&&a!==''&&b!=null&&b!=='')?Number(a)-Number(b):null;
@@ -223,9 +240,9 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('change',e=>{
   const id=e.target.id,v=e.target.value;
-  if(id==='sel_type'){st.store={type:v};save();render()}
-  if(id==='sel_group'){st.store={type:st.store.type,group:v};save();render()}
-  if(id==='sel_name'){st.store.name=v;save();render()}
+  if(id==='sel_type'){st.store={type:v};ui.canPrev=false;ui.loaded=null;save();render()}
+  if(id==='sel_group'){st.store={type:st.store.type,group:v};ui.canPrev=false;ui.loaded=null;save();render()}
+  if(id==='sel_name'){st.store.name=v;ui.canPrev=false;save();render();offerPrev()}
 });
 document.addEventListener('keydown',e=>{
   const t=e.target;if(!(t.classList&&t.classList.contains('ac')))return;
@@ -245,6 +262,7 @@ document.addEventListener('click',async e=>{
   if(d.dir){st.dir=st.dir===d.dir?'':d.dir;save();render();return}
   if(d.step!==undefined){if(+d.step>0&&!st.store.name){toast('매장을 먼저 선택해 주세요');return}ui.step=+d.step;render();scrollTo(0,0);return}
   if(d.go){if(+d.go>0&&!st.store.name){toast('매장을 먼저 선택해 주세요');return}ui.step=Math.max(0,Math.min(STEPS.length-1,ui.step+ +d.go));render();scrollTo(0,0);return}
+  if(d.loadprev){loadPrev(false);return}
   if(d.again){ui.sent=null;ui.step=0;st.sid=uuid();save();render();return}
   if(d.submit)submit(b);
 });
@@ -254,7 +272,7 @@ async function submit(b){
   try{
     if(!CFG.endpoint){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(payload,null,1)],{type:'application/json'}));a.download=`sku_${payload.store.name||'test'}_${payload.sid}.json`;document.body.appendChild(a);a.click();a.remove()}
     else{const r=await fetch(CFG.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});const j=await r.json();if(!j.ok)throw new Error(j.error||'제출 실패')}
-    ui.sent=payload.store.name;clearTimeout(saveT);try{localStorage.removeItem(DKEY)}catch(x){}
+    ui.sent=payload.store.name;if(CFG.endpoint)rememberSid(payload.store.name,payload.sid);clearTimeout(saveT);try{localStorage.removeItem(DKEY)}catch(x){}
   }catch(x){er.textContent='제출하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요. 계속 안 되면 아래 버튼으로 파일을 저장해 담당자에게 보내 주세요.';
     er.insertAdjacentHTML('afterend','<button type="button" class="btn sm" id="bk">응답 파일로 저장</button>');
     $('#bk').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(payload,null,1)],{type:'application/json'}));a.download=`sku_${payload.store.name}_${payload.sid}.json`;document.body.appendChild(a);a.click();a.remove()};
@@ -271,7 +289,7 @@ Promise.all([fetch('data/stores.json').then(r=>r.json()),fetch('data/products.js
  .then(([s,p])=>{stores=s;P=p.items;byNo=Object.fromEntries(P.map(x=>[x.no,x]));
    if(st.store.name&&!stores.some(x=>x.name===st.store.name))st.store={};
    CATS.forEach(c=>['remove','add'].forEach(k=>st[k][c].forEach(x=>{if(x.no&&!byNo[x.no])x.no=''})));
-   render()})
+   render();offerPrev()})
  .catch(()=>{$('#root').innerHTML='<div class="notice">데이터를 불러오지 못했습니다. 새로고침해 주세요.</div>'});
 })();
 </script>

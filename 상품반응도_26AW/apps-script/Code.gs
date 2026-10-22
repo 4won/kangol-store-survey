@@ -23,7 +23,22 @@ const PRICE_SUBS = [['가방', '토트백'], ['가방', '크로스백'], ['가�
   ['의류', '긴소매티셔츠'], ['의류', '라운드티셔츠'], ['의류', '집업'], ['의류', '바지'], ['의류', '자켓'], ['의류', '후드티셔츠'], ['의류', '셔츠'], ['의류', '니트'],
   ['모자', '벙거지'], ['모자', '야구모자']];   // 설문 페이지의 PSUBS 와 같아야 함
 
-function doGet() { return out_({ ok: true, msg: 'store survey endpoint' }); }
+/** GET ?action=load&sid=<제출ID> : 그 제출ID 를 아는 사람(= 이전에 그 기기로 제출한 매장)에게만 해당 매장의 최신 응답을 돌려줍니다. */
+function doGet(e) {
+  const p = (e && e.parameter) || {};
+  if (p.action === 'load' && p.sid) return out_(loadPrev_(String(p.sid)));
+  return out_({ ok: true, msg: 'store survey endpoint' });
+}
+function loadPrev_(sid) {
+  const sh = SpreadsheetApp.getActive().getSheetByName('원본JSON');
+  if (!sh || sh.getLastRow() < 2) return { ok: true, data: null };
+  const vals = sh.getDataRange().getValues();            // [제출ID, 제출일시, 매장명, JSON 조각1, 조각2, ...]
+  const hit = vals.slice(1).find(r => String(r[0]) === sid);
+  if (!hit) return { ok: true, data: null };
+  let last = null;
+  for (let i = vals.length - 1; i >= 1; i--) if (vals[i][2] === hit[2]) { last = vals[i]; break; }   // 같은 매장의 가장 최근 제출
+  try { return { ok: true, store: hit[2], at: last[1], data: JSON.parse(last.slice(3).join('')) }; } catch (err) { return { ok: false, error: 'parse' }; }
+}
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -46,7 +61,7 @@ function doPost(e) {
     append_(ss, '상품평가', (d.products || []).map(p => base.concat(st3, [p.cat, p.sub, p.no, p.name, p.price, p.grade, p.design, p.price_score, p.comment]).map(c)));
     append_(ss, '가격적정선', (d.prices || []).map(x => base.concat(st3, [x.cat, x.sub, x.min, x.max, x.vsCur, x.vsComp, x.note]).map(c)));
     append_(ss, '경쟁브랜드', (d.comps || []).map(x => base.concat(st3, [x.grp, x.brand, x.range, x.strength, x.promo, x.reaction]).map(c)));
-    append_(ss, '원본JSON', [[d.sid, at, s.name, JSON.stringify(d).slice(0, 49000)]]);
+    { const js = JSON.stringify(d), chunks = []; for (let i = 0; i < js.length; i += 40000) chunks.push(js.slice(i, i + 40000)); append_(ss, '원본JSON', [[d.sid, at, s.name].concat(chunks)]); }
     return out_({ ok: true });
   } catch (err) {
     return out_({ ok: false, error: String(err) });

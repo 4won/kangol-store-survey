@@ -19,3 +19,9 @@
 - **새 조사 추가**: 폴더를 만들고 `survey.json`(slug · title · order · status · desc · site · sitePath · report) 만 넣으면 포털에 탭이 생깁니다. 배포 때 `scripts/build_site.mjs` 가 폴더를 훑어 목록(`surveys.json`)을 만듭니다.
 - **리포트 보호**: 저장소가 공개라서 리포트는 비밀번호로 암호화(AES-GCM)한 파일(`상품반응도_26AW/report/report.enc.json`)만 올라가며, 비밀번호를 입력해야 브라우저에서 열립니다. 비밀번호는 `상품반응도_26AW/reports/portal-password.txt` 에만 있고 git 에 올라가지 않습니다.
 - **리포트 갱신**: `cd 상품반응도_26AW && node tools/build_report.mjs --portal` → `git add report && commit && push`
+
+## 모든 설문 공통 규칙
+1. **같은 매장이 다시 제출하면 덮어쓰기**: 시트에는 새 행이 쌓이고 이전 행은 `최신=N` 으로만 바뀝니다(삭제 없음). 리포트는 `최신=Y` 만 집계합니다. (설문 응답 수집 스크립트의 `markOld_`)
+2. **이전 제출 내용 불러오기**: 매장을 선택했을 때, 이 기기에서 이전에 제출한 기록(제출ID)이 있으면 서버(`Apps Script doGet?action=load&sid=...`)에서 그 매장의 최신 응답을 가져와 입력칸을 채웁니다. 입력이 비어 있으면 자동으로, 이미 입력 중이면 "이전 제출 내용 불러오기" 버튼으로 안내합니다. 제출ID를 아는 기기만 불러올 수 있어서, 매장명만으로는 다른 매장 응답을 읽을 수 없습니다(비공개 항목 보호).
+3. **새 설문에 적용**: `node scripts/patch_gs_prefill.mjs`(Apps Script 쪽) 와 `node scripts/patch_prefill_client.mjs`(설문 페이지 쪽)에 새 설문의 경로를 추가하고 설문 고유의 `applyPrev`(불러온 응답 → 입력 상태)·`isBlank` 를 작성합니다. 원본JSON 은 40,000자씩 나눠 저장해 잘리지 않습니다.
+4. 기존 응답은 제출ID 가 기기에 저장되지 않아 불러오기가 안 됩니다. 다음 제출부터 적용됩니다.
