@@ -4,3 +4,6 @@ reports/
 ~$*
 매장SKU조사/*.xlsx
 _site/
+
+# clasp (스크립트 ID)
+.clasp.json
