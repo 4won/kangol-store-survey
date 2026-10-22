@@ -9,6 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, pbkdf2Sync, createCipheriv } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
+import { createRequire } from 'node:module';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
 const flag = k => process.argv.includes('--' + k);
@@ -82,6 +83,26 @@ function tally(list) {
 }
 const rem = tally(RM), add = tally(AD);
 const remBy = Object.fromEntries(rem.map(x => [x.no, x])), addBy = Object.fromEntries(add.map(x => [x.no, x]));
+let XLSX_B64 = '';
+const XNAME = `매장SKU조사_제거추가리스트_${new Date().toISOString().slice(0, 10)}.xlsx`;
+try {
+  const X = createRequire(join(HUB, 'tools/'))('xlsx'), wb = X.utils.book_new();
+  const sheetOf = list => {
+    const orderStores = m => [...m.entries()].sort((u, v) => CHANNELS.indexOf(u[1]) - CHANNELS.indexOf(v[1]) || u[0].localeCompare(v[0], 'ko')).map(e => e[0]);
+    const maxN = Math.max(1, ...list.map(x => x.n));
+    const head = ['복종', '세부복종', '품번', '상품명', '판매가', '요청 매장 수', '입고', '판매', '판매율', '요청 매장(전체)', ...Array.from({ length: maxN }, (_, i) => `매장${i + 1}`)];
+    const body = list.slice().sort((a, b) => CATS.indexOf(a.cat) - CATS.indexOf(b.cat) || b.n - a.n || a.no.localeCompare(b.no)).map(x => { const st = orderStores(x.stores), p = byNo[x.no] || {}, sl = sales[x.no] || {}; return [x.cat, p.sub || '', x.no, x.name, p.price ?? '', x.n, sl.inbound ?? '', sl.sales ?? '', sl.rate != null ? Math.round(sl.rate * 1000) / 1000 : '', st.join(', '), ...st]; });
+    const ws = X.utils.aoa_to_sheet([head, ...body]);
+    ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 10 }, { wch: 34 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 40 }, ...Array.from({ length: maxN }, () => ({ wch: 16 }))];
+    for (let r = 1; r <= body.length; r++) { const pc = ws[X.utils.encode_cell({ r, c: 8 })]; if (pc && typeof pc.v === 'number') pc.z = '0.0%'; for (const c of [4, 6, 7]) { const q = ws[X.utils.encode_cell({ r, c })]; if (q && typeof q.v === 'number') q.z = '#,##0'; } }
+    ws['!freeze'] = { xSplit: 4, ySplit: 1 }; ws['!views'] = [{ state: 'frozen', xSplit: 4, ySplit: 1 }];
+    return ws;
+  };
+  X.utils.book_append_sheet(wb, sheetOf(rem), '제거리스트'); X.utils.book_append_sheet(wb, sheetOf(add), '추가리스트');
+  XLSX_B64 = X.write(wb, { type: 'base64', bookType: 'xlsx' });
+  mkdirSync(join(ROOT, 'reports', SEASON), { recursive: true }); writeFileSync(join(ROOT, 'reports', SEASON, XNAME), Buffer.from(XLSX_B64, 'base64'));
+} catch (e) { console.log('엑셀 생성 건너뜀:', e.message); }
+const xbtn = XLSX_B64 ? '<button type="button" class="xl so" onclick="dlx()">엑셀 다운로드 (제거·추가 리스트)</button>' : '';
 
 /* ---------- 키워드(주제) 규칙 ---------- */
 const THEMES = {
@@ -139,7 +160,7 @@ const bars = (rows, tone = 'navy') => { const mx = Math.max(1, ...rows.map(r => 
    <div class="bx"><h3>카테고리별 DP수 (매장 평균)</h3>${dpCard}</div>
    <div class="bx"><h3>운영 SKU 수에 대한 의견</h3>${opCard}</div>
    <div class="bx"><h3>과다·적정·부족 매장 수</h3>${ovCard}</div>
-   <div class="bx"><h3>과다 SKU 운영 실태 <span class="sec">비공개</span></h3><div class="note">매장명 없이 합계만 표시합니다.</div>${bars(overRows, 'navy')}</div>
+   <div class="bx"><h3>과다 SKU 운영 실태 <span class="sec">비공개</span></h3><div class="note">선택지는 합계만 표시합니다. '기타' 입력 문구는 5페이지에서 매장별로 볼 수 있습니다.</div>${bars(overRows, 'navy')}</div>
    <div class="bx"><h3>적정 − 실제 차이에 대한 방향</h3>${bars(dirRows, 'good')}</div>
    <div class="bx"><h3>핵심 포인트</h3><div class="ins">${pts}</div></div>
   </div>`, 'p1');
@@ -164,12 +185,13 @@ const bars = (rows, tone = 'navy') => { const mx = Math.max(1, ...rows.map(r => 
 
 // P3·P4 제거/추가 요청 품번
 function reqPage(title, sub, list, other, kind) {
+  const xb = typeof xbtn === 'string' ? xbtn : '';
   const cols = CATS.map(c => {
     const l = list.filter(x => x.cat === c), top = l.slice(0, 10), rest = l.slice(10, 22), mx = Math.max(1, ...l.map(x => x.n));
     const row = x => { const s = sales[x.no], p = byNo[x.no]; return `<div class="rq" data-no="${esc(x.no)}"><div class="th">${thumb(x.no)}</div><div class="rt"><div class="nm"><b>${esc(x.name)}</b>${p && p.price ? `<i class="pv">${n0(p.price)}원</i>` : ''}</div><span>${esc(x.no)}${p ? ' · ' + esc(p.sub) : ''}${s && s.rate != null ? ' · 판매율 ' + Math.round(s.rate * 1000) / 10 + '%' : ''}${other[x.no] ? ` · <u class="x">${kind === 'rem' ? '추가' : '제거'} 요청 ${other[x.no].n}곳도 있음</u>` : ''}</span><div class="bar"><i style="width:${(x.n / mx) * 100}%"></i></div></div><b class="cn">${x.n}곳</b></div>`; };
     return `<div class="bx"><h3><u style="background:${catColor[c]}"></u>${c} <span class="mut">${l.reduce((s, x) => s + x.n, 0)}건 · ${l.length}개 품번</span></h3>${top.map(row).join('') || '<div class="empty">요청 없음</div>'}${rest.length ? `<div class="rest"><small>그 외 요청 품번 ${l.length - 10}개${l.length > 22 ? ' (상위 12개 표시)' : ''}</small><div class="kws">${rest.map(x => `<span class="kw" data-no="${esc(x.no)}">${esc(clip(x.name, 18))} ${x.n}</span>`).join('')}</div></div>` : ''}</div>`;
   }).join('');
-  dash(`${mast(title, sub + '<span class="so"><br>품번을 클릭하면 요청한 매장을 볼 수 있습니다</span>')}<div class="g3c">${cols}</div>`, 'p3');
+  dash(`${mast(title, sub + '<span class="so"><br>품번을 클릭하면 요청한 매장을 볼 수 있습니다 ' + xb + '</span>')}<div class="g3c">${cols}</div>`, 'p3');
 }
 reqPage('제거하고 싶은 품번', '요청 매장 수가 많은 순 · 판매율은 허브 판매 데이터 기준', rem, addBy, 'rem');
 reqPage('추가로 받고 싶은 품번', '요청 매장 수가 많은 순 · 판매율은 허브 판매 데이터 기준', add, remBy, 'add');
@@ -193,15 +215,24 @@ for (const no of new Set([...rem, ...add].map(x => x.no))) {
     tpl.push(`<template id="s-${id}-all"><div class="dd"><div class="dcat">${title}</div><h2>전체 의견 (${items.length}건${anon ? ', 매장명 비공개' : ''})</h2><div class="dbox">${tbl(items.map(x => rowT(x).replace('__T__', esc(x.text))))}</div></div></template>`);
     return `<div class="bx"><h3 class="sbh"><span>${title} <span class="mut">${items.length}개 매장 작성</span></span>${items.length ? `<span class="sall" data-sop="${id}-all">전체 보기 ›</span>` : ''}</h3>${items.length ? (top.length ? `<p class="sbsum">${top.slice(0, 3).map(t => `<b>${esc(t.label)}</b>(${t.hits.length}곳)`).join(', ')} 순으로 많이 언급됐습니다.</p>` : '') + top.map((t, i) => `<div class="sth" data-sop="${id}-${i}"><span class="sl">${esc(t.label)}</span><div class="bar"><i style="width:${(t.hits.length / mx) * 100}%"></i></div><b>${t.hits.length}곳</b><small>${esc(t.desc)}</small></div>`).join('') : '<div class="empty">아직 작성된 의견이 없습니다.</div>'}</div>`;
   };
-  dash(`${mast('운영 실태와 자유 의견', '주제를 클릭하면 의견 상세가 열립니다<span class="so"></span>')}<div class="g2">${block('o', '과다 SKU 운영 방식 (기타 입력) · 비공개', others, 'other', true)}${block('f', 'SKU 관련 하고 싶은 말씀', frees, 'free', false)}</div>`, 'p5');
+  dash(`${mast('운영 실태와 자유 의견', '주제를 클릭하면 의견 상세가 열립니다<span class="so"></span>')}<div class="g2">${block('o', '과다 SKU 운영 방식 (기타 입력)', others, 'other', false)}${block('f', 'SKU 관련 하고 싶은 말씀', frees, 'free', false)}</div>`, 'p5');
 }
 
 // 매장별 DP 현황 표 (여러 페이지로 이어짐)
 {
   const ds = D.slice().sort((a, b) => CHANNELS.indexOf(a.ch) - CHANNELS.indexOf(b.ch) || a.grp.localeCompare(b.grp, 'ko') || a.store.localeCompare(b.store, 'ko'));
   const dc = v => `<td class="n ${v == null ? '' : v > 10 ? 'low' : v > 0 ? 'warn' : v < 0 ? 'blu' : ''}">${sgn(v)}</td>`;
-  const body = ds.map(d => `<tr><td class="nw">${esc(d.store)}</td><td class="nw">${chLabel(d.ch)}</td>${CATS.map(c => `<td class="n">${n0(d.c[c].a)}</td><td class="n">${n0(d.c[c].i)}</td>${dc(d.c[c].a != null && d.c[c].i != null ? d.c[c].a - d.c[c].i : null)}`).join('')}<td class="nw">${CATS.map(c => d.c[c].lv ? `${c[0]}${d.c[c].lv}` : '').filter(Boolean).join(' ')}</td><td class="nw">${esc(d.dir.replace(/\(.*\)/, ''))}</td><td class="n">${d.r['제거요청수'] || 0}</td><td class="n">${d.r['추가요청수'] || 0}</td></tr>`).join('');
-  pages.push(`<section class="pg flow"><h2>매장별 DP 현황</h2><div class="sub">차이 = 실제 − 적정 (10 초과 빨강, 0 초과 주황, 음수 파랑) · 의견 1~5 = 너무 많다 ~ 너무 모자르다 · 과다 SKU 운영 실태(3번)는 비공개라서 표시하지 않습니다</div><table class="allp"><thead><tr><th rowspan="2">매장</th><th rowspan="2">채널</th>${CATS.map(c => `<th colspan="3" class="c">${c}</th>`).join('')}<th rowspan="2">의견</th><th rowspan="2">방향</th><th rowspan="2" class="n">제거</th><th rowspan="2" class="n">추가</th></tr><tr>${CATS.map(() => '<th class="n">실제</th><th class="n">적정</th><th class="n">차이</th>').join('')}</tr></thead><tbody>${body}</tbody></table></section>`);
+  const remByStore = {}, addByStore = {};
+  RM.forEach(r => { (remByStore[r['매장명']] ||= new Map()).set(r['품번'], r['상품명']); }); AD.forEach(r => { (addByStore[r['매장명']] ||= new Map()).set(r['품번'], r['상품명']); });
+  const prodTbl = m => { const rows = [...(m || new Map()).entries()].map(([no, nm]) => { const p = byNo[no] || {}, sl = sales[no] || {}; return { no, nm, p, sl }; }).sort((a, b) => CATS.indexOf(a.p.cat) - CATS.indexOf(b.p.cat) || a.no.localeCompare(b.no)); return rows.length ? `<table class="bt"><thead><tr><th></th><th>복종</th><th>품번</th><th>상품명</th><th class="n">판매가</th><th class="n">판매율</th></tr></thead><tbody>${rows.map(x => `<tr><td class="im">${thumb(x.no)}</td><td class="nw">${esc(x.p.cat || '')}${x.p.sub ? ' · ' + esc(x.p.sub) : ''}</td><td class="nw">${esc(x.no)}</td><td>${esc(x.nm)}</td><td class="n">${n0(x.p.price)}</td><td class="n">${x.sl.rate != null ? Math.round(x.sl.rate * 1000) / 10 + '%' : '-'}</td></tr>`).join('')}</tbody></table>` : '<span class="mut">없음</span>'; };
+  ds.forEach((d, i) => tpl.push(`<template id="t-${i}"><div class="dd"><div class="dcat">${chLabel(d.ch)} · ${esc(d.grp)}</div><h2>${esc(d.store)}</h2><div class="dm"><span class="tag">${esc(d.dir || '방향 미선택')}</span>${CATS.map(c => d.c[c].lv ? `<span class="tag c">${c} 의견 ${LEVELS[d.c[c].lv - 1]}</span>` : '').join('')}</div>
+    <table class="bt" style="max-width:420px"><thead><tr><th>카테고리</th><th class="n">실제 DP</th><th class="n">적정 DP</th><th class="n">차이</th></tr></thead><tbody>${CATS.map(c => `<tr><td>${c}</td><td class="n">${n0(d.c[c].a)}</td><td class="n">${n0(d.c[c].i)}</td><td class="n">${d.c[c].a != null && d.c[c].i != null ? sgn(d.c[c].a - d.c[c].i) : '-'}</td></tr>`).join('')}</tbody></table>
+    ${d.other.trim() ? `<div class="dbox" style="margin-top:12px"><h4>과다 SKU 운영 방식 (기타 입력)</h4>${esc(d.other)}</div>` : ''}
+    <div class="bgrid1"><div class="dbox"><h4 style="color:${C.low}">제거 요청 품번 (${(remByStore[d.store] || new Map()).size}개)</h4>${prodTbl(remByStore[d.store])}</div>
+    <div class="dbox"><h4 style="color:${C.good}">추가 요청 품번 (${(addByStore[d.store] || new Map()).size}개)</h4>${prodTbl(addByStore[d.store])}</div></div>
+    ${d.free ? `<div class="dbox" style="margin-top:12px"><h4>SKU 관련 하고 싶은 말씀</h4>${esc(d.free)}</div>` : ''}</div></template>`));
+  const body = ds.map((d, i) => `<tr data-st="${i}"><td class="nw">${esc(d.store)}</td><td class="nw">${chLabel(d.ch)}</td>${CATS.map(c => `<td class="n">${n0(d.c[c].a)}</td><td class="n">${n0(d.c[c].i)}</td>${dc(d.c[c].a != null && d.c[c].i != null ? d.c[c].a - d.c[c].i : null)}`).join('')}<td class="nw">${CATS.map(c => d.c[c].lv ? `${c[0]}${d.c[c].lv}` : '').filter(Boolean).join(' ')}</td><td class="nw">${esc(d.dir.replace(/\(.*\)/, ''))}</td><td class="n">${d.r['제거요청수'] || 0}</td><td class="n">${d.r['추가요청수'] || 0}</td></tr>`).join('');
+  pages.push(`<section class="pg flow"><h2>매장별 DP 현황</h2><div class="sub">차이 = 실제 − 적정 (10 초과 빨강, 0 초과 주황, 음수 파랑) · 의견 1~5 = 너무 많다 ~ 너무 모자르다<span class="so"> · 매장 행을 클릭하면 그 매장이 요청한 제거·추가 품번이 보입니다 ${xbtn}</span></div><table class="allp"><thead><tr><th rowspan="2">매장</th><th rowspan="2">채널</th>${CATS.map(c => `<th colspan="3" class="c">${c}</th>`).join('')}<th rowspan="2">의견</th><th rowspan="2">방향</th><th rowspan="2" class="n">제거</th><th rowspan="2" class="n">추가</th></tr><tr>${CATS.map(() => '<th class="n">실제</th><th class="n">적정</th><th class="n">차이</th>').join('')}</tr></thead><tbody>${body}</tbody></table></section>`);
 }
 
 /* ---------- HTML ---------- */
@@ -246,7 +277,8 @@ table{width:100%;border-collapse:collapse;font-size:8pt}th,td{border:.5pt solid 
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.nw{white-space:nowrap}
 tr{break-inside:avoid}thead{display:table-header-group}table.allp{font-size:7.6pt}table.allp td{padding:.7mm 1.4mm}
 td.low{background:var(--lowbg);color:var(--lowfg);font-weight:700}td.warn{background:var(--warnbg);color:var(--warnfg);font-weight:700}td.blu{background:var(--blubg);color:var(--blufg);font-weight:700}
-.dpc.x{}
+tr[data-st]{cursor:pointer}tr[data-st]:hover td{background:#f7f8fb}.xl{font:inherit;font-size:7.6pt;border:.5pt solid var(--gold);background:transparent;color:var(--gold);border-radius:1.4mm;padding:.6mm 2.6mm;margin-left:2mm;cursor:pointer}.sub .xl{border-color:var(--navy);color:var(--navy)}.xl:hover{background:rgba(217,198,140,.15)}
+td.im{width:10mm;padding:.5mm}td.im img{display:block;width:8mm;height:9mm;object-fit:contain}.bgrid1{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
 .modal{position:fixed;inset:0;background:rgba(15,25,40,.55);display:grid;place-items:center;z-index:50;padding:16px}.modal[hidden]{display:none}
 .mp{background:#fff;border-radius:10px;max-width:900px;width:100%;max-height:92vh;overflow:auto;padding:22px 26px;position:relative;font-size:13px;line-height:1.5}
 .mx{position:absolute;top:10px;right:14px;border:0;background:none;font-size:26px;line-height:1;color:#6b7385;cursor:pointer}
@@ -256,10 +288,10 @@ td.low{background:var(--lowbg);color:var(--lowfg);font-weight:700}td.warn{backgr
 .bgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.dbox{border:1px solid var(--line);border-radius:8px;padding:12px 14px}.dbox h4{margin:0 0 6px;font-size:13px}.dsay{margin:0 0 8px}.bt{font-size:12px}.bt td{overflow-wrap:anywhere}
 @media (max-width:760px){.dh2,.bgrid{grid-template-columns:1fr}}
 @page dash{size:A4 landscape;margin:0}@page flow{size:A4 landscape;margin:8mm 8mm 12mm}.pg.dash{page:dash}.pg.flow{page:flow}
-@media print{.modal,template{display:none!important}.so{display:none}.rq,.sth,.sall,.kw{cursor:auto}body{background:#fff}.pg{width:297mm;min-height:210mm;margin:0;box-shadow:none;break-after:page}.pg:last-child{break-after:auto}.pg.dash{height:210mm}.pg.flow{width:auto;min-height:0;padding:0}}
+@media print{.modal,template{display:none!important}.so,.xl{display:none}.rq,.sth,.sall,.kw{cursor:auto}body{background:#fff}.pg{width:297mm;min-height:210mm;margin:0;box-shadow:none;break-after:page}.pg:last-child{break-after:auto}.pg.dash{height:210mm}.pg.flow{width:auto;min-height:0;padding:0}}
 `;
 const fontLink = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Sans:wght@400;500;700&display=swap">';
-const modalHtml = `<div class="modal" id="modal" hidden><div class="mp"><button class="mx" type="button" aria-label="닫기">×</button><div id="mbody"></div></div></div>${tpl.join('')}<script>(function(){var m=document.getElementById('modal'),b=document.getElementById('mbody');function close(){m.hidden=true;document.body.style.overflow=''}document.addEventListener('click',function(e){var it=e.target.closest('[data-no],[data-sop]');if(it){var id=it.hasAttribute('data-no')?'d-'+it.getAttribute('data-no'):'s-'+it.getAttribute('data-sop');var t=document.getElementById(id);if(t){b.innerHTML=t.innerHTML;m.hidden=false;document.body.style.overflow='hidden';m.querySelector('.mp').scrollTop=0}return}if(e.target===m||e.target.closest('.mx'))close()});document.addEventListener('keydown',function(e){if(e.key==='Escape')close()})})();<\/script>`;
+const modalHtml = `<div class="modal" id="modal" hidden><div class="mp"><button class="mx" type="button" aria-label="닫기">×</button><div id="mbody"></div></div></div>${tpl.join('')}<script>(function(){var m=document.getElementById('modal'),b=document.getElementById('mbody');function close(){m.hidden=true;document.body.style.overflow=''}document.addEventListener('click',function(e){var it=e.target.closest('[data-no],[data-sop],[data-st]');if(it){var id=it.hasAttribute('data-no')?'d-'+it.getAttribute('data-no'):it.hasAttribute('data-st')?'t-'+it.getAttribute('data-st'):'s-'+it.getAttribute('data-sop');var t=document.getElementById(id);if(t){b.innerHTML=t.innerHTML;m.hidden=false;document.body.style.overflow='hidden';m.querySelector('.mp').scrollTop=0}return}if(e.target===m||e.target.closest('.mx'))close()});document.addEventListener('keydown',function(e){if(e.key==='Escape')close()})})();window.dlx=function(){var b=atob(window.__X),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);var u=URL.createObjectURL(new Blob([a],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),l=document.createElement('a');l.href=u;l.download=window.__XN;document.body.appendChild(l);l.click();l.remove();setTimeout(function(){URL.revokeObjectURL(u)},3000)};<\/script>${XLSX_B64 ? `<script>window.__X='${XLSX_B64}';window.__XN='${XNAME}';<\/script>` : ''}`;
 const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${SEASON} 매장 SKU 조사 리포트</title>${fontLink}<style>${css}</style></head><body>${pages.join('\n')}${modalHtml}</body></html>`;
 
 const outDir = join(ROOT, 'reports', SEASON); mkdirSync(outDir, { recursive: true });
