@@ -35,3 +35,14 @@ node tools/build_data.mjs        # 26AW/data/products.json · stores.json · app
 
 ## 접속 주소
 `https://4won.github.io/kangol-store-survey/sku-26AW/`
+
+## 취합 리포트 (A4 가로 HTML)
+```bash
+cd 매장SKU조사
+node tools/build_report.mjs            # 로컬 확인용: reports/26AW/SKU리포트_{날짜}.html
+node tools/build_report.mjs --portal   # 허브 페이지용: 비밀번호 암호화해 report/report.enc.json 저장 → commit·push 하면 허브의 'SKU' 탭에 반영
+```
+- 시트 ID 는 `reports/sheet.txt` (git 에 올리지 않음). 비밀번호는 `reports/portal-password.txt` 또는 `--password`.
+- 구성: 요약(카테고리별 DP·운영 의견·과다/부족·실태·방향) → 채널별 DP 현황 → 제거 요청 품번 → 추가 요청 품번 → 운영 방식(기타)·자유 의견 → 매장별 DP 현황 표.
+- 3번(과다 SKU 운영 실태)은 비공개라서 합계와 익명 문구만 나오고 매장명은 표시하지 않습니다. 품번을 클릭하면 요청한 매장이 나옵니다.
+- 판매율은 허브 판매 데이터(`--hub`)가 있을 때만 표시됩니다.

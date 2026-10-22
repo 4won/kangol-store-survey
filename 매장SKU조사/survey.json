@@ -6,5 +6,5 @@
   "desc": "매장 디스플레이 SKU 조사. 의류·가방·모자 실제/적정 DP수, 운영 SKU 수 의견, 과다 SKU 운영 실태, 제거·추가 요청 품번.",
   "site": "26AW",
   "sitePath": "sku-26AW",
-  "report": null
+  "report": "report"
 }
