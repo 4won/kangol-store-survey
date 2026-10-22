@@ -99,6 +99,30 @@ try {
     return ws;
   };
   X.utils.book_append_sheet(wb, sheetOf(rem), '제거리스트'); X.utils.book_append_sheet(wb, sheetOf(add), '추가리스트');
+  // 제거·추가 겹침: 제거 요청과 추가 요청이 둘 다 있는 상품 → 제거 요청 매장 ↔ 추가 요청 매장을 짝지어 한 행씩 (같은 채널계열 → 같은 채널형태 → 그 외 순서)
+  {
+    const grpOf = Object.fromEntries(stores.map(s => [s.name, s.group])), tyOf = Object.fromEntries(stores.map(s => [s.name, s.type]));
+    const info = n => ({ n, type: tyOf[n] || '', grp: grpOf[n] || '' });
+    const both = rem.filter(x => addBy[x.no]).sort((a, b) => CATS.indexOf(a.cat) - CATS.indexOf(b.cat) || (b.n + addBy[b.no].n) - (a.n + addBy[a.no].n) || a.no.localeCompare(b.no));
+    const head = ['복종', '세부복종', '품번', '상품명', '판매가', '입고', '판매', '판매율', '제거 요청 매장 수', '추가 요청 매장 수', '매칭', '제거 요청 매장', '제거 채널', '제거 계열', '추가 요청 매장', '추가 채널', '추가 계열'];
+    const out = [];
+    for (const x of both) {
+      const a = addBy[x.no], p = byNo[x.no] || {}, sl = sales[x.no] || {};
+      const order = m => [...m.keys()].map(info).sort((u, v) => CHANNELS.indexOf(u.type) - CHANNELS.indexOf(v.type) || u.grp.localeCompare(v.grp, 'ko') || u.n.localeCompare(v.n, 'ko'));
+      const R = order(x.stores), A = order(a.stores), pairs = [], usedA = new Set(), usedR = new Set();
+      const pass = (test, label) => { R.forEach((r, i) => { if (usedR.has(i)) return; const j = A.findIndex((t, k) => !usedA.has(k) && test(r, t)); if (j >= 0) { usedR.add(i); usedA.add(j); pairs.push([r, A[j], label]); } }); };
+      pass((r, t) => r.type === t.type && r.grp === t.grp, '같은 채널계열'); pass((r, t) => r.type === t.type, '같은 채널형태'); pass(() => true, '다른 채널');
+      R.forEach((r, i) => { if (!usedR.has(i)) pairs.push([r, null, '매칭 없음(제거만)']); }); A.forEach((t, k) => { if (!usedA.has(k)) pairs.push([null, t, '매칭 없음(추가만)']); });
+      pairs.sort((u, v) => ['같은 채널계열', '같은 채널형태', '다른 채널', '매칭 없음(제거만)', '매칭 없음(추가만)'].indexOf(u[2]) - ['같은 채널계열', '같은 채널형태', '다른 채널', '매칭 없음(제거만)', '매칭 없음(추가만)'].indexOf(v[2]));
+      for (const [r, t, label] of pairs) out.push([x.cat, p.sub || '', x.no, x.name, p.price ?? '', sl.inbound ?? '', sl.sales ?? '', sl.rate != null ? Math.round(sl.rate * 1000) / 1000 : '', x.n, a.n, label, r ? r.n : '', r ? chLabel(r.type) : '', r ? r.grp : '', t ? t.n : '', t ? chLabel(t.type) : '', t ? t.grp : '']);
+    }
+    const ws = X.utils.aoa_to_sheet([head, ...out.length ? out : [['(제거·추가가 모두 요청된 상품이 없습니다)']]]);
+    ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 10 }, { wch: 34 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 10 }, { wch: 10 }];
+    ws['!views'] = [{ state: 'frozen', xSplit: 4, ySplit: 1 }];
+    for (let r = 1; r <= out.length; r++) { const pc = ws[X.utils.encode_cell({ r, c: 7 })]; if (pc && typeof pc.v === 'number') pc.z = '0.0%'; for (const c of [4, 5, 6]) { const q = ws[X.utils.encode_cell({ r, c })]; if (q && typeof q.v === 'number') q.z = '#,##0'; } }
+    X.utils.book_append_sheet(wb, ws, '제거·추가 겹침');
+    console.log(`제거·추가 겹침: ${both.length}개 품번 · ${out.length}행`);
+  }
   XLSX_B64 = X.write(wb, { type: 'base64', bookType: 'xlsx' });
   mkdirSync(join(ROOT, 'reports', SEASON), { recursive: true }); writeFileSync(join(ROOT, 'reports', SEASON, XNAME), Buffer.from(XLSX_B64, 'base64'));
 } catch (e) { console.log('엑셀 생성 건너뜀:', e.message); }
