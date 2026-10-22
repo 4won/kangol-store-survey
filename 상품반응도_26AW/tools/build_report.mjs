@@ -119,7 +119,8 @@ const agg = list => ({ inbound: sum(list.map(p => p.inbound)), sales: sum(list.m
 const rateOf = a => (a.inbound ? a.sales / a.inbound : null);
 
 /* ---------- 렌더 ---------- */
-const today = new Date().toISOString().slice(0, 10);
+const nowK = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16).replace('T', ' ');   // 한국시간 YYYY-MM-DD HH:mm
+const today = nowK.slice(0, 10);
 const asOf = pm.meta?.data_as_of || pmWeek;
 const mainPages = [], appPages = [];
 const page = (title, body, cls2 = '', target = 'app') => (target === 'main' ? mainPages : appPages).push(`<section class="pg ${cls2}"><h2>${title}</h2>${body}</section>`);
@@ -334,7 +335,7 @@ const dash = (inner, cls = '') => mainPages.push(`<section class="pg dash ${cls}
     `<div style="border-color:${C.good}">디자인·가격 모두 높은 상품 <b>${qa.q.HH.length}개</b> · 모두 낮은 상품 <b>${qa.q.LL.length}개</b></div>`,
   ].filter(Boolean).join('');
   const subm = CHANNELS.map(ch => { const all = stores.filter(x => x.type === ch).length, dn = stores.filter(x => x.type === ch && S.some(r => r['매장명'] === x.name)).length; return `<span>${chLabel(ch)} <b>${dn}/${all}</b></span>`; }).join('');
-  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '매장 반응도 조사 · 요약', `응답 ${today} · 판매 ${asOf} 기준 · 출고 상품 ${products.length}개<br>종합점수 = 디자인 60% + 가격 40%<div class="subm">제출 현황 ${subm}</div>`)}
+  dash(`${mast(`KANGOL · ${SEASON} STORE VOICE`, '매장 반응도 조사 · 요약', `응답 ${nowK} (KST) · 판매 ${asOf} 기준 · 출고 상품 ${products.length}개<br>종합점수 = 디자인 60% + 가격 40%<div class="subm">제출 현황 ${subm}</div>`)}
   <div class="kpis">${kpi(`${storeCount}<i> / ${stores.length}</i>`, '제출 매장', pct(storeCount / stores.length))}${kpi(ov == null ? '-' : ov.toFixed(1), '시즌 만족도', '전년 25AW = 3.0', heat(ov))}${kpi(allComp == null ? '-' : allComp.toFixed(2), '종합점수', '5점 만점', heat(allComp))}${kpi(flagged, '점검 필요 상품', `종합 ${LOW.toFixed(1)} 미만`, flagged ? 'hl' : '')}${kpi(n0(PR.length), '상품 평가 건수', `${new Set(PR.map(r => r['품번'])).size}개 상품`)}</div>
   <div class="g6">
    <div class="bx"><h3>카테고리별 점수</h3>${hbars(catRows, { w: 330 })}</div>
@@ -588,7 +589,7 @@ if (PORTAL) {
   const ct = Buffer.concat([cipher.update(gzipSync(Buffer.from(wrap(`${SEASON} 매장 반응도 조사 취합 리포트`, mainPages, modalHtml), 'utf8'))), cipher.final(), cipher.getAuthTag()]);   // WebCrypto 형식: 암호문 뒤에 태그
   const outDirP = join(ROOT, 'report'); mkdirSync(outDirP, { recursive: true });
   writeFileSync(join(outDirP, 'report.enc.json'), JSON.stringify({ v: 1, alg: 'AES-GCM', kdf: 'PBKDF2-SHA256', iter, gz: true, salt: salt.toString('base64'), iv: iv.toString('base64'), ct: ct.toString('base64') }));
-  writeFileSync(join(outDirP, 'report.meta.json'), JSON.stringify({ updated: today, season: SEASON }));
+  writeFileSync(join(outDirP, 'report.meta.json'), JSON.stringify({ updated: nowK, season: SEASON }));
   console.log(`포털용 암호화 리포트 저장: report/report.enc.json (${(ct.length / 1024).toFixed(0)}KB)`);
 }
 if (!flag('main-only') && !HUBPUB && !PORTAL) writeFileSync(outApp, wrap(`${SEASON} 매장 반응도 조사 취합 리포트 · 부록`, appPages));

@@ -84,7 +84,8 @@ const SUPPLY = {};
 }
 const D = R.map(r => ({ sup: SUPPLY[r['매장명']] || null, r, store: r['매장명'], ch: chOf(r), grp: r['채널계열'], c: row(r), over: r['과다SKU_운영실태'], other: r['과다SKU_기타'], dir: r['차이_방향'], free: (r['SKU_자유의견'] || '').trim() }));
 const N = D.length;
-const today = new Date().toISOString().slice(0, 10);
+const nowK = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16).replace('T', ' ');   // 한국시간 YYYY-MM-DD HH:mm
+const today = nowK.slice(0, 10);
 const C = { navy: '#1F3A5C', navy2: '#16283F', steel: '#8fa3bf', low: '#b5524a', warn: '#b98f3c', good: '#3f6f5a', gold: '#D9C68C', bag: '#c98a55', cloth: '#5f9e84', hat: '#8a7bbf' };
 const catColor = { '의류': C.cloth, '가방': C.bag, '모자': C.hat };
 
@@ -206,7 +207,7 @@ const bars = (rows, tone = 'navy') => { const mx = Math.max(1, ...rows.map(r => 
     dirRows[0].n ? `<div style="border-color:${C.warn}">차이 해소 방향: ${dirRows.slice().sort((a, b) => b.n - a.n)[0].label} <b>${dirRows.slice().sort((a, b) => b.n - a.n)[0].n}곳</b></div>` : '',
     rem[0] ? `<div style="border-color:${C.good}">제거 요청 1위 <b>${esc(rem[0].name)}</b> (${rem[0].n}곳) · 추가 요청 1위 <b>${add[0] ? esc(add[0].name) + ' (' + add[0].n + '곳)' : '-'}</b></div>` : '',
   ].filter(Boolean).join('');
-  dash(`${mast('매장 디스플레이 SKU 조사 · 요약', `응답 ${today} 기준<br>제출 ${N} / ${stores.length}개 매장 · DP수는 매장이 입력한 AW 현재 기준`)}
+  dash(`${mast('매장 디스플레이 SKU 조사 · 요약', `응답 ${nowK} (KST) 기준<br>제출 ${N} / ${stores.length}개 매장 · DP수는 매장이 입력한 AW 현재 기준`)}
   <div class="kpis">${kp(`${N}<i> / ${stores.length}</i>`, '제출 매장', pct(N, stores.length), ` data-gp="${subId}" title="클릭하면 제출·미제출 매장을 볼 수 있습니다"`)}${kp(n0(avg(D.map(d => sum(CATS.map(c => d.c[c].a))))), '매장당 실제 DP', '3개 카테고리 합')}${kp(n0(avg(D.map(d => sum(CATS.map(c => d.c[c].i))))), '매장당 적정 DP', '3개 카테고리 합')}${kp(`${pct(overStores, N)}`, '과다 DP 매장', `${overStores}곳`, overAt)}${kp(`${rem.reduce((s, x) => s + x.n, 0)} / ${add.reduce((s, x) => s + x.n, 0)}`, '제거 / 추가 요청', `품번 ${rem.length} / ${add.length}개`)}</div>
   <div class="g6">
    <div class="bx"><h3>카테고리별 DP수 (매장 평균)</h3>${dpCard}</div>
@@ -372,6 +373,6 @@ if (PORTAL) {
   const ct = Buffer.concat([cipher.update(gzipSync(Buffer.from(html, 'utf8'))), cipher.final(), cipher.getAuthTag()]);
   const dirP = join(ROOT, 'report'); mkdirSync(dirP, { recursive: true });
   writeFileSync(join(dirP, 'report.enc.json'), JSON.stringify({ v: 1, alg: 'AES-GCM', kdf: 'PBKDF2-SHA256', iter, gz: true, salt: salt.toString('base64'), iv: iv.toString('base64'), ct: ct.toString('base64') }));
-  writeFileSync(join(dirP, 'report.meta.json'), JSON.stringify({ updated: today, season: SEASON }));
+  writeFileSync(join(dirP, 'report.meta.json'), JSON.stringify({ updated: nowK, season: SEASON }));
   console.log(`포털용 암호화 리포트 저장: report/report.enc.json (${(ct.length / 1024).toFixed(0)}KB)`);
 }
