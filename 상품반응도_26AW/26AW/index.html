@@ -154,7 +154,7 @@ function rememberSid(store,sid){try{const m=lastMap();m[store]=sid;localStorage.
 function prevSid(){return CFG.endpoint&&st.store.name?lastMap()[st.store.name]:''}
 async function loadPrev(auto){
   const sid=prevSid();if(!sid)return false;
-  try{const r=await fetch(CFG.endpoint+(CFG.endpoint.indexOf('?')>=0?'&':'?')+'action=load&sid='+encodeURIComponent(sid));const j=await r.json();
+  try{const r=await fetch(CFG.endpoint+(CFG.endpoint.indexOf('?')>=0?'&':'?')+'action=load&token='+encodeURIComponent(sid));const j=await r.json();
     if(j&&j.ok&&j.data){applyPrev(j.data);ui.sent=null;ui.loaded=st.store.name;ui.canPrev=false;save();render();toast('이전에 제출한 내용을 불러왔습니다. 수정 후 다시 제출하면 덮어씁니다.');return true}}catch(e){}
   if(!auto)toast('이전 제출 내용을 불러오지 못했습니다.');return false}
 function offerPrev(){if(!prevSid()||ui.loaded===st.store.name)return;if(isBlank())loadPrev(true);else{ui.canPrev=true;render()}}

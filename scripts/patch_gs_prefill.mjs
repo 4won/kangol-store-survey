@@ -2,10 +2,10 @@
 // 새 조사를 만들 때도 같은 코드를 쓰세요(공통 규칙: README 참고). 사용: node scripts/patch_gs_prefill.mjs
 import fs from 'node:fs';
 const FILES = [['상품반응도_26AW/apps-script/Code.gs', 'store survey endpoint'], ['매장SKU조사/apps-script/Code.gs', 'store sku survey endpoint']];
-const LOAD = msg => `/** GET ?action=load&sid=<제출ID> : 그 제출ID 를 아는 사람(= 이전에 그 기기로 제출한 매장)에게만 해당 매장의 최신 응답을 돌려줍니다. */
+const LOAD = msg => `/** GET ?action=load&token=<제출ID>  (sid 라는 이름은 Google 이 막아 400 이 나므로 token 사용) : 그 제출ID 를 아는 사람(= 이전에 그 기기로 제출한 매장)에게만 해당 매장의 최신 응답을 돌려줍니다. */
 function doGet(e) {
   const p = (e && e.parameter) || {};
-  if (p.action === 'load' && p.sid) return out_(loadPrev_(String(p.sid)));
+  if (p.action === 'load' && p.token) return out_(loadPrev_(String(p.token)));
   return out_({ ok: true, msg: '${msg}' });
 }
 function loadPrev_(sid) {
