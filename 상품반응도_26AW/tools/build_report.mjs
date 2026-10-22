@@ -7,6 +7,8 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { randomBytes, pbkdf2Sync, createCipheriv } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
 const flag = k => process.argv.includes('--' + k);
@@ -17,7 +19,8 @@ const sheetFile = join(ROOT, 'reports', 'sheet.txt');
 const SHEET = arg('sheet', existsSync(sheetFile) ? readFileSync(sheetFile, 'utf8').trim() : ''), CSVDIR = arg('csv', '');
 if (!SHEET && !CSVDIR) { console.error('시트 ID 가 없습니다. --sheet <ID> 를 주거나 reports/sheet.txt 에 ID 를 적어 두세요.'); process.exit(1); }
 const HUBPUB = flag('hub-publish');   // 허브(kangol-work-hub) ETC 메뉴용: 이미지는 허브의 product-info-old 를 참조, 출력은 허브 etc-reports
-const imgSrc = p => (HUBPUB ? `../product-info-old/${SEASON}/${p.img.split('/').pop()}` : `../../${SEASON}/${p.img}`);
+const PORTAL = flag('portal');   // 깃허브 포털용: 리포트를 비밀번호로 암호화해 report/report.enc.json 으로 저장 (이미지는 사이트의 {시즌}/img 참조)
+const imgSrc = p => (PORTAL ? `${SEASON}/img/${p.img.split('/').pop()}` : HUBPUB ? `../product-info-old/${SEASON}/${p.img.split('/').pop()}` : `../../${SEASON}/${p.img}`);
 const LOW = 2.5, WARN = 3.0;                      // 점수 색 기준: LOW 미만 빨강, WARN 미만 주황
 const CATS = ['가방', '의류', '모자'];
 const PSUBS = { '가방': ['토트백', '크로스백', '백팩'], '의류': ['긴소매티셔츠', '라운드티셔츠', '집업', '바지', '자켓', '후드티셔츠', '셔츠', '니트'], '모자': ['벙거지', '야구모자'] };
@@ -574,7 +577,21 @@ const wrap = (title, pagesArr, extra = '') => `<!doctype html><html lang="ko"><h
 const outDir = join(ROOT, 'reports', SEASON); mkdirSync(outDir, { recursive: true });
 const outMain = HUBPUB ? join(HUB, 'etc-reports', `${SEASON}_store_survey_report.html`) : join(outDir, `취합리포트_${today}.html`), outApp = join(outDir, `취합리포트_부록_${today}.html`);
 writeFileSync(outMain, wrap(`${SEASON} 매장 반응도 조사 취합 리포트`, mainPages, modalHtml));
-if (!flag('main-only') && !HUBPUB) writeFileSync(outApp, wrap(`${SEASON} 매장 반응도 조사 취합 리포트 · 부록`, appPages));
+if (PORTAL) {
+  // 비밀번호: --password > reports/portal-password.txt > 새로 생성(저장). 비밀번호는 git 에 올라가지 않음(reports/ 는 .gitignore)
+  const pwFile = join(ROOT, 'reports', 'portal-password.txt');
+  let pw = arg('password', existsSync(pwFile) ? readFileSync(pwFile, 'utf8').trim() : '');
+  if (!pw) { pw = randomBytes(9).toString('base64url').replace(/[-_]/g, 'x'); mkdirSync(dirname(pwFile), { recursive: true }); writeFileSync(pwFile, pw); console.log('새 비밀번호를 만들어 reports/portal-password.txt 에 저장했습니다.'); }
+  else if (arg('password', '')) { mkdirSync(dirname(pwFile), { recursive: true }); writeFileSync(pwFile, pw); }
+  const salt = randomBytes(16), iv = randomBytes(12), iter = 200000;
+  const key = pbkdf2Sync(pw, salt, iter, 32, 'sha256'), cipher = createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([cipher.update(gzipSync(Buffer.from(wrap(`${SEASON} 매장 반응도 조사 취합 리포트`, mainPages, modalHtml), 'utf8'))), cipher.final(), cipher.getAuthTag()]);   // WebCrypto 형식: 암호문 뒤에 태그
+  const outDirP = join(ROOT, 'report'); mkdirSync(outDirP, { recursive: true });
+  writeFileSync(join(outDirP, 'report.enc.json'), JSON.stringify({ v: 1, alg: 'AES-GCM', kdf: 'PBKDF2-SHA256', iter, gz: true, salt: salt.toString('base64'), iv: iv.toString('base64'), ct: ct.toString('base64') }));
+  writeFileSync(join(outDirP, 'report.meta.json'), JSON.stringify({ updated: today, season: SEASON }));
+  console.log(`포털용 암호화 리포트 저장: report/report.enc.json (${(ct.length / 1024).toFixed(0)}KB)`);
+}
+if (!flag('main-only') && !HUBPUB && !PORTAL) writeFileSync(outApp, wrap(`${SEASON} 매장 반응도 조사 취합 리포트 · 부록`, appPages));
 console.log(`리포트 생성: ${outMain}\n부록: ${outApp}\n  제출 ${storeCount}/${stores.length}개 매장 · 상품평가 ${PR.length}건 · 가격 ${PC.length}건 · 경쟁브랜드 ${CP.length}건 · 본문 ${mainPages.length}페이지 + 부록 ${appPages.length}개 섹션`);
 
 if (flag('pdf')) {

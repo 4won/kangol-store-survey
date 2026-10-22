@@ -1,10 +1,10 @@
 name: Deploy survey to GitHub Pages
-# 조사 폴더(예: 상품반응도_26AW/) 안의 시즌 폴더(26AW, 27SS ...)와 루트 index.html 만 배포합니다.
-# tools/ apps-script/ reports/ README 는 배포되지 않습니다. 접속 주소는 .../kangol-store-survey/26AW/ 로 유지됩니다.
+# scripts/build_site.mjs 가 각 조사 폴더의 survey.json 을 읽어 설문 페이지·암호화 리포트·포털 목록을 조립합니다.
+# 새 조사는 폴더 + survey.json 만 추가하면 포털(루트 주소)에 탭이 생깁니다. 설문 주소(/26AW/, /sku-26AW/)는 그대로 유지됩니다.
 on:
   push:
     branches: [main]
-    paths: ['*/[0-9][0-9][AS][WS]/**', 'index.html', '.github/workflows/pages.yml']
+    paths: ['*/[0-9][0-9][AS][WS]/**', '*/survey.json', '*/report/**', 'index.html', 'scripts/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,15 +21,11 @@ jobs:
       url: ${{ steps.d.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Collect site files
-        run: |
-          mkdir _site
-          cp index.html _site/
-          # 상품반응도_26AW/26AW -> /26AW/ , 매장SKU조사/26AW -> /sku-26AW/
-          for d in 상품반응도_*/[0-9][0-9][AS][WS]; do [ -d "$d" ] && cp -r "$d" _site/; done
-          for d in 매장SKU조사/[0-9][0-9][AS][WS]; do [ -d "$d" ] && cp -r "$d" "_site/sku-$(basename "$d")"; done
-          touch _site/.nojekyll
-          printf 'User-agent: *\nDisallow: /\n' > _site/robots.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build site
+        run: node scripts/build_site.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

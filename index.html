@@ -1,4 +1,124 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow">
-<meta http-equiv="refresh" content="0;url=26AW/"><title>매장 반응도 조사</title></head>
-<body><a href="26AW/">26AW 매장 반응도 조사로 이동</a></body></html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>매장 조사 허브</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+/* 레이아웃: 상단 고정 헤더(브랜드 + 조사별 탭) 아래에 선택한 조사의 리포트(또는 준비 중 화면) */
+:root{--bg:#F2F2F2;--card:#fff;--ink:#1c2230;--mut:#6b7385;--line:#e6e8ec;--navy:#1F3A5C;--navy2:#16283F;--gold:#D9C68C;--bad:#b5524a;--ok:#3f6f5a;--font:'Noto Sans KR','Noto Sans','Malgun Gothic',system-ui,sans-serif}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.6;display:flex;flex-direction:column}
+header.top{background:var(--navy2);color:#fff;padding:12px 20px 0;flex:none}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.brand span{font-size:11px;letter-spacing:.12em;color:var(--gold);font-weight:500}
+.brand b{font-size:18px;font-weight:700}
+.tabs{display:flex;gap:4px;margin-top:10px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:none;border:0;background:transparent;color:#c6d0df;font:inherit;font-size:14px;font-weight:500;padding:9px 18px;border-radius:8px 8px 0 0;cursor:pointer;white-space:nowrap}
+.tabs button:hover{color:#fff;background:rgba(255,255,255,.08)}
+.tabs button.on{background:var(--bg);color:var(--navy2);font-weight:700}
+main{flex:1;min-height:0;display:flex;flex-direction:column}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 20px;background:var(--card);border-bottom:1px solid var(--line);font-size:13px;color:var(--mut);flex:none}
+.bar b{color:var(--ink)}
+.bar .sp{flex:1}
+.btn{font:inherit;font-size:13px;font-weight:500;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:5px 12px;cursor:pointer;text-decoration:none}
+.btn.pri{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn:hover{border-color:var(--navy)}
+iframe{flex:1;width:100%;border:0;background:#e4e6ec;min-height:0}
+.center{flex:1;display:grid;place-items:center;padding:24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px 26px;width:100%;max-width:520px;display:grid;gap:12px}
+.card h2{margin:0;font-size:19px}
+.card p{margin:0;color:var(--mut);font-size:14px}
+.chip{display:inline-block;font-size:12px;font-weight:700;padding:2px 10px;border-radius:99px;background:#e3e8f0;color:var(--navy)}
+input[type=password],input[type=text]{width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px}
+input:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--navy);outline-offset:1px}
+.err{color:var(--bad);font-size:13px;min-height:1.2em}
+.link{display:flex;gap:8px;align-items:center}
+.link input{flex:1;font-size:13px;color:var(--mut);background:#f7f8fa}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.mut{color:var(--mut);font-size:13px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span>KANGOL</span><b>매장 조사 허브</b></div>
+  <div class="tabs" id="tabs"></div>
+</header>
+<main id="main"><div class="center"><div class="card"><p>불러오는 중...</p></div></div></main>
+<script>
+(function(){
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let surveys=[],cur=null;const cache={};   // 복호화한 리포트(탭 전환 시 다시 입력하지 않도록 메모리에 보관)
+const pwKey=slug=>'hub-pw-'+slug;
+
+/* AES-GCM 복호화 (비밀번호 → PBKDF2 → 키) + gzip 해제 */
+async function decrypt(enc,pw){
+  const b=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+  const km=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:b(enc.salt),iterations:enc.iter,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
+  let buf=await crypto.subtle.decrypt({name:'AES-GCM',iv:b(enc.iv)},key,b(enc.ct));
+  if(enc.gz){const ds=new DecompressionStream('gzip'),w=ds.writable.getWriter();w.write(buf);w.close();buf=await new Response(ds.readable).arrayBuffer()}
+  return new TextDecoder().decode(buf);
+}
+const absUrl=p=>new URL(p,location.href.split('#')[0]).href;
+
+function tabs(){$('#tabs').innerHTML=surveys.map(s=>`<button type="button" data-slug="${esc(s.slug)}" class="${cur&&cur.slug===s.slug?'on':''}">${esc(s.title)}</button>`).join('')}
+function show(slug){
+  cur=surveys.find(s=>s.slug===slug)||surveys[0];if(!cur)return;
+  history.replaceState(null,'','#'+cur.slug);document.title=cur.title+' · 매장 조사 허브';tabs();
+  cur.report?reportView():placeholder();
+}
+function placeholder(){
+  const url=absUrl(cur.surveyPath);
+  $('#main').innerHTML=`<div class="center"><div class="card"><div><span class="chip">${esc(cur.status||'진행 중')}</span></div><h2>${esc(cur.title)}</h2><p>${esc(cur.desc)}</p>
+  <p><b style="color:var(--ink)">리포트 준비 중입니다.</b> 응답이 모이고 리포트 형식이 정해지면 이 탭에 표시됩니다.</p>
+  <div class="mut">설문 링크</div><div class="link"><input type="text" readonly value="${esc(url)}" id="lk"><button class="btn" type="button" id="cp">복사</button></div>
+  <div class="row"><a class="btn pri" href="${esc(cur.surveyPath)}" target="_blank" rel="noopener">설문 페이지 열기</a></div></div></div>`;
+  $('#cp').onclick=async()=>{try{await navigator.clipboard.writeText(url);$('#cp').textContent='복사됨'}catch(e){$('#lk').select();$('#cp').textContent='선택됨 (Ctrl+C)'}};
+}
+function reportView(){
+  const s=cur;
+  if(cache[s.slug]){renderFrame(s,cache[s.slug]);return}
+  let saved='';try{saved=sessionStorage.getItem(pwKey(s.slug))||''}catch(e){}
+  $('#main').innerHTML=`<div class="center"><form class="card" id="f"><div><span class="chip">${esc(s.status||'진행 중')}</span></div><h2>${esc(s.title)} 리포트</h2><p>리포트는 비밀번호로 보호되어 있습니다. 담당자에게 받은 비밀번호를 입력해 주세요.</p>
+  <input type="password" id="pw" placeholder="비밀번호" autocomplete="current-password" autofocus><div class="err" id="er"></div>
+  <div class="row"><button class="btn pri" type="submit" id="ok">리포트 열기</button><a class="btn" href="${esc(s.surveyPath)}" target="_blank" rel="noopener">설문 페이지</a></div></form></div>`;
+  $('#f').onsubmit=e=>{e.preventDefault();open_(s,$('#pw').value)};
+  if(saved)open_(s,saved,true);
+}
+async function open_(s,pw,silent){
+  const er=$('#er'),ok=$('#ok');if(!silent&&!pw){er.textContent='비밀번호를 입력해 주세요.';return}
+  if(ok){ok.disabled=true;ok.textContent='여는 중...'}
+  try{
+    const enc=await (await fetch(s.report+'?v='+(s.updated||''))).json();
+    const html=await decrypt(enc,pw);
+    try{sessionStorage.setItem(pwKey(s.slug),pw)}catch(e){}
+    cache[s.slug]=html;if(cur&&cur.slug===s.slug)renderFrame(s,html);
+  }catch(e){
+    try{sessionStorage.removeItem(pwKey(s.slug))}catch(x){}
+    if(er)er.textContent=silent?'':'비밀번호가 맞지 않거나 리포트를 불러오지 못했습니다.';
+    if(ok){ok.disabled=false;ok.textContent='리포트 열기'}
+  }
+}
+function renderFrame(s,html){
+  const base='<base href="'+location.href.split('#')[0].replace(/[^/]*$/,'')+'" target="_blank">';
+  const doc=html.replace('<head>','<head>'+base);
+  $('#main').innerHTML=`<div class="bar"><b>${esc(s.title)}</b><span>리포트 업데이트 ${esc(s.updated||'-')}</span><span class="sp"></span><a class="btn" href="${esc(s.surveyPath)}" target="_blank" rel="noopener">설문 페이지</a><button class="btn" type="button" id="nw">새 창으로 보기</button><button class="btn" type="button" id="lock">잠그기</button></div><iframe id="fr" title="${esc(s.title)} 리포트"></iframe>`;
+  $('#fr').srcdoc=doc;
+  $('#nw').onclick=()=>{const u=URL.createObjectURL(new Blob([doc],{type:'text/html'}));window.open(u,'_blank')};
+  $('#lock').onclick=()=>{delete cache[s.slug];try{sessionStorage.removeItem(pwKey(s.slug))}catch(e){}reportView()};
+}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-slug]');if(b)show(b.dataset.slug)});
+window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(h&&(!cur||cur.slug!==h))show(h)});
+fetch('surveys.json?x='+Date.now()).then(r=>r.json()).then(l=>{surveys=l;show(location.hash.slice(1))})
+ .catch(()=>{$('#main').innerHTML='<div class="center"><div class="card"><p>목록을 불러오지 못했습니다. 새로고침해 주세요.</p></div></div>'});
+})();
+</script>
+</body>
+</html>
