@@ -69,7 +69,20 @@ const clip = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, n
 const typeOf = Object.fromEntries(stores.map(s => [s.name, s.type]));
 const chOf = r => typeOf[r['매장명']] || r['채널형태'];
 const row = r => Object.fromEntries(CATS.map(c => [c, { a: num(r[`${c}_실제DP`]), i: num(r[`${c}_적정DP`]), d: num(r[`${c}_차이`]), lv: LEVELS.indexOf(r[`${c}_의견`]) + 1 }]));
-const D = R.map(r => ({ r, store: r['매장명'], ch: chOf(r), grp: r['채널계열'], c: row(r), over: r['과다SKU_운영실태'], other: r['과다SKU_기타'], dir: r['차이_방향'], free: (r['SKU_자유의견'] || '').trim() }));
+// 신상공급 = 출고현황(STYLE_매장별 출고현황.xlsx)에서 해당 매장 출고 수량이 1 이상인 품번×색상(SKU) 수. 기획코드 B=가방, C·W=의류, H=모자
+const SUPPLY = {};
+{
+  const supFile = arg('supply', join(ROOT, 'reports', 'supply', 'STYLE_매장별 출고현황.xlsx'));
+  try {
+    const X0 = createRequire(join(HUB, 'tools/'))('xlsx'), wbS = X0.readFile(supFile), rowsS = X0.utils.sheet_to_json(wbS.Sheets[wbS.SheetNames[0]], { header: 1 });
+    const CODE = { B: '가방', C: '의류', W: '의류', H: '모자' }, ALIAS = { '스타필드수원': '신세계스타필드수원' };
+    const data = rowsS.slice(2).filter(x => x[5] && CODE[x[3]]);
+    rowsS[0].forEach((name, ci) => { if (ci < 10 || !name) return; const m = SUPPLY[name] = { '의류': 0, '가방': 0, '모자': 0 }; for (const x of data) if (Number(x[ci]) > 0) m[CODE[x[3]]]++; });
+    for (const [a, b] of Object.entries(ALIAS)) if (SUPPLY[b] && !SUPPLY[a]) SUPPLY[a] = SUPPLY[b];
+    console.log(`신상공급 데이터: ${Object.keys(SUPPLY).length}개 매장 (${supFile.split(/[\\/]/).pop()})`);
+  } catch (e) { console.log('신상공급 파일을 읽지 못해 생략합니다:', e.message); }
+}
+const D = R.map(r => ({ sup: SUPPLY[r['매장명']] || null, r, store: r['매장명'], ch: chOf(r), grp: r['채널계열'], c: row(r), over: r['과다SKU_운영실태'], other: r['과다SKU_기타'], dir: r['차이_방향'], free: (r['SKU_자유의견'] || '').trim() }));
 const N = D.length;
 const today = new Date().toISOString().slice(0, 10);
 const C = { navy: '#1F3A5C', navy2: '#16283F', steel: '#8fa3bf', low: '#b5524a', warn: '#b98f3c', good: '#3f6f5a', gold: '#D9C68C', bag: '#c98a55', cloth: '#5f9e84', hat: '#8a7bbf' };
@@ -245,18 +258,19 @@ for (const no of new Set([...rem, ...add].map(x => x.no))) {
 // 매장별 DP 현황 표 (여러 페이지로 이어짐)
 {
   const ds = D.slice().sort((a, b) => CHANNELS.indexOf(a.ch) - CHANNELS.indexOf(b.ch) || a.grp.localeCompare(b.grp, 'ko') || a.store.localeCompare(b.store, 'ko'));
+  const sd = v => `<td class="n ${v == null ? '' : v > 10 ? 'warn' : ''}">${sgn(v)}</td>`;
   const dc = v => `<td class="n ${v == null ? '' : v > 10 ? 'low' : v > 0 ? 'warn' : v < 0 ? 'blu' : ''}">${sgn(v)}</td>`;
   const remByStore = {}, addByStore = {};
   RM.forEach(r => { (remByStore[r['매장명']] ||= new Map()).set(r['품번'], r['상품명']); }); AD.forEach(r => { (addByStore[r['매장명']] ||= new Map()).set(r['품번'], r['상품명']); });
   const prodTbl = m => { const rows = [...(m || new Map()).entries()].map(([no, nm]) => { const p = byNo[no] || {}, sl = sales[no] || {}; return { no, nm, p, sl }; }).sort((a, b) => CATS.indexOf(a.p.cat) - CATS.indexOf(b.p.cat) || a.no.localeCompare(b.no)); return rows.length ? `<table class="bt"><thead><tr><th></th><th>복종</th><th>품번</th><th>상품명</th><th class="n">판매가</th><th class="n">판매율</th></tr></thead><tbody>${rows.map(x => `<tr><td class="im">${thumb(x.no)}</td><td class="nw">${esc(x.p.cat || '')}${x.p.sub ? ' · ' + esc(x.p.sub) : ''}</td><td class="nw">${esc(x.no)}</td><td>${esc(x.nm)}</td><td class="n">${n0(x.p.price)}</td><td class="n">${x.sl.rate != null ? Math.round(x.sl.rate * 1000) / 10 + '%' : '-'}</td></tr>`).join('')}</tbody></table>` : '<span class="mut">없음</span>'; };
   ds.forEach((d, i) => tpl.push(`<template id="t-${i}"><div class="dd"><div class="dcat">${chLabel(d.ch)} · ${esc(d.grp)}</div><h2>${esc(d.store)}</h2><div class="dm"><span class="tag">${esc(d.dir || '방향 미선택')}</span>${CATS.map(c => d.c[c].lv ? `<span class="tag c">${c} 의견 ${LEVELS[d.c[c].lv - 1]}</span>` : '').join('')}</div>
-    <table class="bt" style="max-width:420px"><thead><tr><th>카테고리</th><th class="n">실제 DP</th><th class="n">적정 DP</th><th class="n">차이</th></tr></thead><tbody>${CATS.map(c => `<tr><td>${c}</td><td class="n">${n0(d.c[c].a)}</td><td class="n">${n0(d.c[c].i)}</td><td class="n">${d.c[c].a != null && d.c[c].i != null ? sgn(d.c[c].a - d.c[c].i) : '-'}</td></tr>`).join('')}</tbody></table>
+    <table class="bt" style="max-width:560px"><thead><tr><th>카테고리</th><th class="n">실제 DP</th><th class="n">적정 DP</th><th class="n">차이</th><th class="n">신상공급</th><th class="n">공급−실제</th></tr></thead><tbody>${CATS.map(c => `<tr><td>${c}</td><td class="n">${n0(d.c[c].a)}</td><td class="n">${n0(d.c[c].i)}</td><td class="n">${d.c[c].a != null && d.c[c].i != null ? sgn(d.c[c].a - d.c[c].i) : '-'}</td><td class="n">${d.sup ? d.sup[c] : '-'}</td><td class="n">${d.sup && d.c[c].a != null ? sgn(d.sup[c] - d.c[c].a) : '-'}</td></tr>`).join('')}</tbody></table>
     ${d.other.trim() ? `<div class="dbox" style="margin-top:12px"><h4>과다 SKU 운영 방식 (기타 입력)</h4>${esc(d.other)}</div>` : ''}
     <div class="bgrid1"><div class="dbox"><h4 style="color:${C.low}">제거 요청 품번 (${(remByStore[d.store] || new Map()).size}개)</h4>${prodTbl(remByStore[d.store])}</div>
     <div class="dbox"><h4 style="color:${C.good}">추가 요청 품번 (${(addByStore[d.store] || new Map()).size}개)</h4>${prodTbl(addByStore[d.store])}</div></div>
     ${d.free ? `<div class="dbox" style="margin-top:12px"><h4>SKU 관련 하고 싶은 말씀</h4>${esc(d.free)}</div>` : ''}</div></template>`));
-  const body = ds.map((d, i) => `<tr data-st="${i}"><td class="nw">${esc(d.store)}</td><td class="nw">${chLabel(d.ch)}</td>${CATS.map(c => `<td class="n">${n0(d.c[c].a)}</td><td class="n">${n0(d.c[c].i)}</td>${dc(d.c[c].a != null && d.c[c].i != null ? d.c[c].a - d.c[c].i : null)}`).join('')}<td class="nw">${CATS.map(c => d.c[c].lv ? `${c[0]}${d.c[c].lv}` : '').filter(Boolean).join(' ')}</td><td class="nw">${esc(d.dir.replace(/\(.*\)/, ''))}</td><td class="n">${d.r['제거요청수'] || 0}</td><td class="n">${d.r['추가요청수'] || 0}</td></tr>`).join('');
-  pages.push(`<section class="pg flow"><h2>매장별 DP 현황</h2><div class="sub">차이 = 실제 − 적정 (10 초과 빨강, 0 초과 주황, 음수 파랑) · 의견 1~5 = 너무 많다 ~ 너무 모자르다<span class="so"> · 매장 행을 클릭하면 그 매장이 요청한 제거·추가 품번이 보입니다 ${xbtn}</span></div><table class="allp"><thead><tr><th rowspan="2">매장</th><th rowspan="2">채널</th>${CATS.map(c => `<th colspan="3" class="c">${c}</th>`).join('')}<th rowspan="2">의견</th><th rowspan="2">방향</th><th rowspan="2" class="n">제거</th><th rowspan="2" class="n">추가</th></tr><tr>${CATS.map(() => '<th class="n">실제</th><th class="n">적정</th><th class="n">차이</th>').join('')}</tr></thead><tbody>${body}</tbody></table></section>`);
+  const body = ds.map((d, i) => `<tr data-st="${i}"><td class="nw">${esc(d.store)}</td><td class="nw">${chLabel(d.ch)}</td>${CATS.map(c => `<td class="n">${n0(d.c[c].a)}</td><td class="n">${n0(d.c[c].i)}</td>${dc(d.c[c].a != null && d.c[c].i != null ? d.c[c].a - d.c[c].i : null)}<td class="n sp">${d.sup ? d.sup[c] : '-'}</td>${sd(d.sup && d.c[c].a != null ? d.sup[c] - d.c[c].a : null)}`).join('')}<td class="nw">${CATS.map(c => d.c[c].lv ? `${c[0]}${d.c[c].lv}` : '').filter(Boolean).join(' ')}</td><td class="nw">${esc(d.dir.replace(/\(.*\)/, ''))}</td><td class="n">${d.r['제거요청수'] || 0}</td><td class="n">${d.r['추가요청수'] || 0}</td></tr>`).join('');
+  pages.push(`<section class="pg flow"><h2>매장별 DP 현황</h2><div class="sub">차이 = 실제 − 적정 (10 초과 빨강, 0 초과 주황, 음수 파랑) · 신상공급 = 출고현황에서 출고 수량이 있는 품번×색상(SKU) 수 · 공급−실제 = 신상공급 − 실제 DP (10 초과 주황) · 의견 1~5 = 너무 많다 ~ 너무 모자르다<span class="so"> · 매장 행을 클릭하면 그 매장이 요청한 제거·추가 품번이 보입니다 ${xbtn}</span></div><table class="allp"><thead><tr><th rowspan="2">매장</th><th rowspan="2">채널</th>${CATS.map(c => `<th colspan="5" class="c">${c}</th>`).join('')}<th rowspan="2">의견</th><th rowspan="2">방향</th><th rowspan="2" class="n">제거</th><th rowspan="2" class="n">추가</th></tr><tr>${CATS.map(() => '<th class="n">실제</th><th class="n">적정</th><th class="n">차이</th><th class="n">신상공급</th><th class="n">공급−실제</th>').join('')}</tr></thead><tbody>${body}</tbody></table></section>`);
 }
 
 /* ---------- HTML ---------- */
@@ -299,7 +313,7 @@ h3{margin:0 0 1.8mm;font-size:9.5pt;font-weight:700;color:var(--navy2)}
 mark{background:#fbe8a8;color:inherit;padding:0 .3mm}
 table{width:100%;border-collapse:collapse;font-size:8pt}th,td{border:.5pt solid var(--line);padding:1.2mm 1.6mm;text-align:left;vertical-align:top}th{background:#eef1f6;font-weight:700}th.c{text-align:center}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.nw{white-space:nowrap}
-tr{break-inside:avoid}thead{display:table-header-group}table.allp{font-size:7.6pt}table.allp td{padding:.7mm 1.4mm}
+tr{break-inside:avoid}thead{display:table-header-group}table.allp{font-size:7.2pt}td.sp{background:#f4f6fa;border-left:1.2pt solid #c8d0de}table.allp td{padding:.7mm 1.4mm}
 td.low{background:var(--lowbg);color:var(--lowfg);font-weight:700}td.warn{background:var(--warnbg);color:var(--warnfg);font-weight:700}td.blu{background:var(--blubg);color:var(--blufg);font-weight:700}
 tr[data-st]{cursor:pointer}tr[data-st]:hover td{background:#f7f8fb}.xl{font:inherit;font-size:7.6pt;border:.5pt solid var(--gold);background:transparent;color:var(--gold);border-radius:1.4mm;padding:.6mm 2.6mm;margin-left:2mm;cursor:pointer}.sub .xl{border-color:var(--navy);color:var(--navy)}.xl:hover{background:rgba(217,198,140,.15)}
 td.im{width:10mm;padding:.5mm}td.im img{display:block;width:8mm;height:9mm;object-fit:contain}.bgrid1{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
