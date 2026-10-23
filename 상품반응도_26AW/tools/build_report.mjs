@@ -191,6 +191,7 @@ const CPX = (() => {
   const out = [];
   for (const r of CP) {
     const raw = (r['브랜드'] || '').trim(); if (!raw) { out.push(r); continue; }
+    if (/잘 *모르겠|딱히 *없|화이팅/.test(raw)) continue;   // 브랜드가 아닌 문장형 응답은 집계에서 제외
     let parts = raw.split(SEP).map(x => x.trim()).filter(Boolean);
     if (parts.length > 4 || parts.some(p => p.length > 14)) { out.push(r); continue; }   // 문장형 응답은 나누지 않음
     parts = parts.flatMap(p => { if (!/\s/.test(p)) return [p]; const tk = p.split(/\s+/); const known = tk.filter(t => single.has(bkey(t))); return known.length >= 2 ? known : [p]; });
