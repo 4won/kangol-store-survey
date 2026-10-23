@@ -183,10 +183,26 @@ const BALIAS = [[/^(리|lee)$/, 'LEE'], [/^뉴발란스/, '뉴발란스'], [/^�
 const bnorm = raw => String(raw || '').trim().toLowerCase().replace(/\s+/g, '');
 const bkey = raw => { const n = bnorm(raw); const a = BALIAS.find(([re]) => re.test(n)); return a ? a[1] : n; };
 const bname = l => { const k = bkey(l[0]['브랜드']); return BALIAS.some(([, v]) => v === k) ? k : l[0]['브랜드'].trim(); };
+// 한 칸에 브랜드 둘 이상을 적은 응답은 브랜드별로 나눠서 각각 집계 (구분: , / · + & . 또는 이미 알려진 브랜드명이 공백으로 이어진 경우)
+const CPX = (() => {
+  const SEP = /\s*[,，、/·+&.]\s*/;
+  const single = new Set(); // 구분 기호·공백 없이 단독으로 적힌 표기들의 브랜드 키 = 알려진 브랜드
+  CP.forEach(r => { const b = (r['브랜드'] || '').trim(); if (b && !SEP.test(b) && !/\s/.test(b)) single.add(bkey(b)); });
+  const out = [];
+  for (const r of CP) {
+    const raw = (r['브랜드'] || '').trim(); if (!raw) { out.push(r); continue; }
+    let parts = raw.split(SEP).map(x => x.trim()).filter(Boolean);
+    if (parts.length > 4 || parts.some(p => p.length > 14)) { out.push(r); continue; }   // 문장형 응답은 나누지 않음
+    parts = parts.flatMap(p => { if (!/\s/.test(p)) return [p]; const tk = p.split(/\s+/); const known = tk.filter(t => single.has(bkey(t))); return known.length >= 2 ? known : [p]; });
+    if (parts.length <= 1) { out.push(r); continue; }
+    parts.forEach(p => out.push({ ...r, '브랜드': p }));
+  }
+  return out;
+})();
 {
   let body = '';
   for (const g of ['의류', '가방']) {
-    const rs = CP.filter(r => r['복종'] === g && r['브랜드']), by = {};
+    const rs = CPX.filter(r => r['복종'] === g && r['브랜드']), by = {};
     rs.forEach(r => (by[bkey(r['브랜드'])] ||= []).push(r));
     const rows = Object.values(by).sort((a, b) => new Set(b.map(r => r['매장명'])).size - new Set(a.map(r => r['매장명'])).size);
     body += `<h3>${g}</h3><table><thead><tr><th>브랜드</th><th class="n">언급 매장</th><th>가격대</th><th>강점</th><th>프로모션·동향</th><th>고객 반응</th></tr></thead><tbody>` +
@@ -436,7 +452,7 @@ function brandHtml(g, l) {
 }
 {
   const col = g => {
-    const rs = CP.filter(r => r['복종'] === g && r['브랜드']), by = {};
+    const rs = CPX.filter(r => r['복종'] === g && r['브랜드']), by = {};
     rs.forEach(r => (by[bkey(r['브랜드'])] ||= []).push(r));
     const all = Object.values(by).map(l => ({ l, n: new Set(l.map(r => r['매장명'])).size })).sort((a, b) => b.n - a.n || bname(a.l).localeCompare(bname(b.l), 'ko'));
     all.forEach((x, i) => { x.id = (g === '의류' ? 'a' : 'b') + i; brandTpl.push(`<template id="b-${x.id}">${brandHtml(g, x.l)}</template>`); });
