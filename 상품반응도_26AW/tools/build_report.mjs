@@ -52,7 +52,8 @@ async function tab(name) {
 const num = v => { const n = Number(String(v ?? '').replace(/,/g, '')); return v === '' || v == null || isNaN(n) ? null : n; };
 const latest = rows => rows.filter(r => r['최신'] === 'Y');
 
-const [S, PR0, PC, CP] = [await tab('시즌응답'), await tab('상품평가'), await tab('가격적정선'), await tab('경쟁브랜드')].map(latest);
+const [S, PR0, PC, CP_ALL] = [await tab('시즌응답'), await tab('상품평가'), await tab('가격적정선'), await tab('경쟁브랜드')].map(latest);
+const CP = CP_ALL.filter(r => !/잘 *모르겠|딱히 *없|화이팅/.test(r['브랜드'] || ''));   // 브랜드가 아닌 문장형 응답은 모든 집계·부록에서 제외
 const stores = JSON.parse(readFileSync(join(ROOT, SEASON, 'data/stores.json'), 'utf8'));
 const prodList = JSON.parse(readFileSync(join(ROOT, SEASON, 'data/products.json'), 'utf8'));
 const knownNo = new Set(prodList.items.map(p => p.no));
