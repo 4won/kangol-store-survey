@@ -56,6 +56,8 @@ const [S, PR0, PC, CP_ALL] = [await tab('시즌응답'), await tab('상품평가
 const CP = CP_ALL.filter(r => !/잘 *모르겠|딱히 *없|화이팅/.test(r['브랜드'] || ''));   // 브랜드가 아닌 문장형 응답은 모든 집계·부록에서 제외
 const stores = JSON.parse(readFileSync(join(ROOT, SEASON, 'data/stores.json'), 'utf8'));
 const prodList = JSON.parse(readFileSync(join(ROOT, SEASON, 'data/products.json'), 'utf8'));
+// 상품별 구매 연령대 (tools/build_age.mjs 가 만든 reports/age.json — 판매 데이터라 공개 저장소에는 올리지 않고 리포트에만 반영)
+let AGE = null; try { AGE = JSON.parse(readFileSync(join(ROOT, 'reports', 'age.json'), 'utf8')); } catch (e) { console.log('age.json 없음 — 연령대 표시를 건너뜁니다 (node tools/build_age.mjs 로 생성)'); }
 const knownNo = new Set(prodList.items.map(p => p.no));
 const PR = PR0.filter(r => knownNo.has(r['품번']));     // 제외 상품(설문 목록에 없는 품번)의 응답은 집계에서 뺌
 const index = JSON.parse(readFileSync(join(HUB, 'data/summary/index.json'), 'utf8'));
@@ -324,9 +326,26 @@ function kwOf(p) {
   return (p._kw = [...by.values()].map(k => ({ label: k.label, tone: k.tone, count: k.stores.size })).sort((a, b) => b.count - a.count));
 }
 const chip = (k, n = true) => `<span class="kw ${k.tone}">${esc(k.label)}${n ? ` ${k.count}` : ''}</span>`;
+const ABL = { '중학생이하': '중등↓', '고등학생': '고등', '20대초반': '20초', '20대후반': '20후', '30대': '30대', '40대': '40대', '50대이상': '50대+' };
+const ACOL = ['#dbe5f2', '#bccde5', '#9fb3cf', '#7d97ba', '#5a77a0', '#3a5886', '#1F3A5C'];
+function ageMix(no) {
+  const a = AGE && AGE.items[no]; if (!a) return null;
+  const q = AGE.bands.map(b => Math.max(0, a.ages[b] || 0)), tot = q.reduce((t, x) => t + x, 0);
+  if (tot < 20) return { thin: true, tot };
+  return { tot, sh: AGE.bands.map((b, i) => ({ b, q: q[i], s: q[i] / tot, c: ACOL[i] })) };
+}
+const ageChip = p => { const m = ageMix(p.no); if (!m || m.thin) return ''; const t = m.sh.slice().sort((x, y) => y.s - x.s).slice(0, 2); return '<span class="kw age" title="구매 연령 구성(오프라인 판매 기준)">구매 ' + t.map(x => ABL[x.b] + ' ' + Math.round(x.s * 100) + '%').join(' · ') + '</span>'; };
+function ageBlock(p) {
+  if (!AGE) return '';
+  const m = ageMix(p.no);
+  if (!m) return '<div class="agbox"><b>구매 연령대</b> <span class="mut">아직 판매 데이터가 없습니다.</span></div>';
+  if (m.thin) return '<div class="agbox"><b>구매 연령대</b> <span class="mut">판매 표본이 적어(' + m.tot + '개) 표시하지 않습니다.</span></div>';
+  return '<div class="agbox"><b>구매 연령대</b> <span class="mut">백화점·복합쇼핑몰·아울렛 판매 ' + m.tot.toLocaleString('ko-KR') + '개 기준 (' + AGE.through + '까지)</span><div class="agb">' + m.sh.filter(x => x.s > 0).map(x => '<i style="width:' + x.s * 100 + '%;background:' + x.c + ';color:' + (ACOL.indexOf(x.c) < 3 ? '#17325a' : '#fff') + '" title="' + x.b + ' ' + x.q + '개">' + (x.s >= 0.07 ? Math.round(x.s * 100) + '%' : '') + '</i>').join('') + '</div><div class="agl">' + m.sh.map(x => '<span><u style="background:' + x.c + '"></u>' + x.b + ' ' + Math.round(x.s * 100) + '%</span>').join('') + '</div></div>';
+}
 function itemRow(p, showCat) {
   const kws = kwOf(p).filter(k => k.count >= KW.minCount).slice(0, 3);
-  const third = kws.map(k => chip(k)).join('') + (p.notIn ? `<span class="kw st">미입점 ${p.notIn}</span>` : '') || (p.comments.length ? `<small>한줄평 ${p.comments.length}건</small>` : '');
+  const third0 = kws.map(k => chip(k)).join('') + (p.notIn ? `<span class="kw st">미입점 ${p.notIn}</span>` : '') || (p.comments.length ? `<small>한줄평 ${p.comments.length}건</small>` : '');
+  const third = ageChip(p) + third0;
   return `<div class="it" data-no="${esc(p.no)}"><div class="th">${thumb(p)}</div><div class="tx"><div class="nm"><b>${esc(p.name)}</b><i class="pv">${p.price ? n0(p.price) + '원' : ''}</i></div><span>${showCat ? `<u style="background:${catColor[p.cat]}"></u>` : ''}${esc(p.no)} · 디자인 <em class="${heat(p.design)}">${p.design.toFixed(1)}</em> · 가격 <em class="${heat(p.pscore)}">${p.pscore.toFixed(1)}</em> · 판매율 ${pct(p.rate)}</span>${third ? `<div class="kws">${third}</div>` : ''}</div></div>`;
 }
 function quadBox(d, list, n, showCat, total) {
@@ -572,6 +591,7 @@ function detailHtml(p) {
    <div class="di"><div class="dcat"><u style="background:${catColor[p.cat]}"></u>${p.cat} · ${esc(p.sub)}</div><h2>${esc(p.name)}</h2>
     <div class="dm"><span class="tag">${p.no}</span><span class="tag">판매가 ${p.price ? n0(p.price) + '원' : '-'}</span>${p.grade ? `<span class="tag g">${esc(p.grade)}등급</span>` : ''}${p.colors.map(c => `<span class="tag c">${esc(c)}</span>`).join('')}</div>
     ${quad ? `<div class="dq" style="border-color:${quad.col}"><b style="color:${quad.col}">${quad.h}</b><span>${QSAY[quad.k]}</span></div>` : ''}
+    ${ageBlock(p)}
     <div class="dsale"><div><small>입고</small><b>${n0(p.inbound)}</b></div><div><small>판매</small><b>${n0(p.sales)}</b></div><div><small>판매율</small><b>${pct(p.rate)}</b><em>${medR != null ? '카테고리 중앙값 ' + pct(medR) : ''}</em></div></div>
    </div></div>
   <div class="dcards"><div class="dc"><small>종합점수</small><b class="${heat(p.comp)}">${p.comp == null ? '-' : p.comp.toFixed(2)}</b><em>디자인 60 · 가격 40</em></div><div class="dc"><small>디자인</small><b class="${heat(p.design)}">${p.design == null ? '-' : p.design.toFixed(2)}</b>${dl(p.design, cd)}</div><div class="dc"><small>가격</small><b class="${heat(p.pscore)}">${p.pscore == null ? '-' : p.pscore.toFixed(2)}</b>${dl(p.pscore, cpv)}</div><div class="dc"><small>평가 매장</small><b>${stores}</b><em>미입점·미입고 ${p.notIn}곳</em></div></div>
@@ -624,6 +644,7 @@ em.hl,em.hw,em.ho,em.hh,em.h0{font-style:normal;padding:0 1mm;border-radius:.8mm
 .dm{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}.tag{font-size:12px;padding:2px 10px;border-radius:99px;background:#eef1f6;color:var(--navy2);font-weight:500}.tag.g{background:var(--navy2);color:#fff}.tag.c{background:none;border:1px solid var(--line);color:var(--mut)}
 .dq{border-left:4px solid;padding:3px 10px;margin-bottom:10px;background:#f7f8fa}.dq b{margin-right:8px}.dq span{color:var(--mut);font-size:12px}
 .dsale{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.dsale div{background:#f7f8fa;border-radius:6px;padding:6px 10px}.dsale small{display:block;font-size:11px;color:var(--mut)}.dsale b{font-size:16px;font-variant-numeric:tabular-nums}.dsale em{display:block;font-style:normal;font-size:10.5px;color:var(--mut)}
+.kw.age{background:#e8eef7;color:#1F3A5C}.agbox{margin-top:10px;font-size:12px}.agb{display:flex;height:18px;border-radius:5px;overflow:hidden;margin-top:6px;background:#f1f3f7}.agb i{display:grid;place-items:center;font-style:normal;font-size:10px;font-weight:700}.agl{display:flex;flex-wrap:wrap;gap:3px 12px;font-size:11px;color:#6b7385;margin-top:5px}.agl u{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .dcards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}.dc{border:1px solid var(--line);border-radius:8px;padding:8px 12px}.dc small{display:block;font-size:11px;color:var(--mut)}.dc b{font-size:24px;font-variant-numeric:tabular-nums;padding:0 6px;border-radius:4px;display:inline-block;margin:2px 0}.dc em{display:block;font-style:normal;font-size:11px;color:var(--mut)}.dc em.up{color:#2c5f46}.dc em.dn{color:#8a2a22}
 .dgrid{display:grid;grid-template-columns:1fr 1.2fr;gap:14px}.dbox{border:1px solid var(--line);border-radius:8px;padding:12px 14px}.dbox h4{margin:0 0 6px;font-size:13px;color:var(--navy2)}
 .dd2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.dd2 small{font-size:11px;color:var(--mut)}.db{display:grid;grid-template-columns:28px 1fr 20px;gap:6px;align-items:center;font-size:11px;margin:2px 0}.db div{height:8px;background:#f1f3f7;border-radius:3px}.db i{display:block;height:100%;background:var(--navy);border-radius:3px;opacity:.75}.db i.s1,.db i.s2{background:#b5524a}.db b{text-align:right;font-weight:500}
