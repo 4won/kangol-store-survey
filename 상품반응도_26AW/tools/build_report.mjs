@@ -569,7 +569,7 @@ function brandCard(x, i, mx, ax, g) {
     for (const p of list) body += `<tr data-no="${esc(p.no)}" data-cat="${c}" data-i="${rowIdx++}" class="${p.n ? '' : 'none'}"><td class="im">${p.img ? `<img src="${imgSrc(p)}" alt="">` : ''}</td><td>${esc(p.no)}</td><td><b>${esc(p.name)}</b></td><td>${esc(p.sub)}</td><td class="n">${n0(p.price)}</td><td>${esc(p.grade || '')}</td><td class="n">${n0(p.inbound)}</td><td class="n">${n0(p.sales)}</td><td class="n">${pct(p.rate)}</td><td class="n">${p.n || '-'}</td>${sc(p.design)}${sc(p.pscore)}${sc(p.comp)}<td class="n">${p.notIn || ''}</td></tr>`;
     body += '</tbody>';
   }
-  page('전 상품 리스트', `<div class="sub">출고된 ${SEASON} 상품 ${products.length}개 · 카테고리 → 세부 복종 순, 같은 복종 안에서는 종합점수 높은 순 · 점수는 ${LOW.toFixed(1)} 미만 빨강, ${WARN.toFixed(1)} 미만 주황<span class="so"> · 행을 클릭하면 상품 상세가 열립니다</span></div>${body}</table>`, 'flow', 'main');
+  page('전 상품 리스트', `<div class="sub">출고된 ${SEASON} 상품 ${products.length}개 · 카테고리 → 세부 복종 순, 같은 복종 안에서는 종합점수 높은 순 · 점수는 ${LOW.toFixed(1)} 미만 빨강, ${WARN.toFixed(1)} 미만 주황<span class="so"> · 행을 클릭하면 상품 상세가 열립니다</span></div>${body}</table>`, 'flow nopdf', 'main');
 }
 
 // ---- 상품 상세 (HTML 전용, 상품 클릭 시 팝업)
@@ -635,6 +635,9 @@ em.hl,em.hw,em.ho,em.hh,em.h0{font-style:normal;padding:0 1mm;border-radius:.8mm
 .sr{display:grid;grid-template-columns:18mm 1fr 30mm;gap:2mm;align-items:center;margin-bottom:1.6mm;font-size:8pt}.sr span u{display:inline-block;width:2mm;height:2mm;border-radius:50%;margin-right:1.2mm}.bar2{position:relative;height:3mm;background:#f1f3f7;border-radius:1mm}.bar2 i{position:absolute;left:0;top:0;bottom:0;border-radius:1mm}.bar2 i+i{height:1.2mm;top:.9mm;opacity:1}.sr em .py{display:block;font-weight:400;font-size:6.8pt;color:var(--mut)}.subm{margin-top:1.4mm;font-size:7pt;color:#c6d0df}.subm span{margin-left:2.4mm}.subm b{color:#fff;font-weight:500}.sr em{font-style:normal;font-size:7pt;color:var(--mut);text-align:right;line-height:1.2}.sr em b{display:block;color:var(--navy2);font-size:8pt}
 .nm{display:flex;align-items:baseline;gap:1.6mm;min-width:0}.nm b{flex:0 1 auto;min-width:0;display:block}.nm .pv{flex:none;font-style:normal;font-size:7.4pt;color:var(--navy);font-weight:500}
 .kws{display:flex;flex-wrap:wrap;gap:.8mm 1mm;margin-top:.4mm}.kw{font-size:6.6pt;padding:.1mm 1.4mm;border-radius:2mm;white-space:nowrap;background:#eef1f6;color:#3b475c}.kw.pos{background:#e1ece6;color:#2c5f46}.kw.neg{background:#f2dcd9;color:#8a2a22}.kw.neu{background:#eef1f6;color:#3b475c}.kw.st{background:#f1f3f7;color:#7b8190;border:.4pt solid #d4d8e0}
+.pg.dash>*{zoom:var(--z,1)}
+.pg.dash.meas{height:auto!important;overflow:visible!important}.pg.dash.meas>*{flex:none!important;height:auto!important;min-height:0!important;zoom:1!important}.pg.dash.meas *{min-height:0}.pg.dash.meas .g6,.pg.dash.meas .g2,.pg.dash.meas .g3,.pg.dash.meas .g3c,.pg.dash.meas .g4,.pg.dash.meas .gc,.pg.dash.meas .prw{grid-template-rows:none!important}.pg.dash.meas .bx,.pg.dash.meas .qb,.pg.dash.meas .sbx,.pg.dash.meas .prs{overflow:visible!important}
+.pdfb{position:fixed;top:12px;right:16px;z-index:40;font:inherit;font-size:13px;font-weight:700;border:0;background:#16283F;color:#fff;border-radius:8px;padding:8px 16px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3)}.pdfb:hover{background:#1F3A5C}
 .it{cursor:pointer}.it:hover{background:#f7f8fb}.so{display:inline}
 .modal{position:fixed;inset:0;background:rgba(15,25,40,.55);display:grid;place-items:center;z-index:50;padding:16px}.modal[hidden]{display:none}
 .mp{background:#fff;border-radius:10px;max-width:980px;width:100%;max-height:92vh;overflow:auto;padding:22px 26px;position:relative;font-size:13px;line-height:1.5}
@@ -685,10 +688,11 @@ td.cm{font-size:7.5pt;min-width:60mm}td.cm div{margin-bottom:.6mm}td.low,.low{ba
 .kpi{border:.5pt solid var(--line);padding:2mm 3mm}.kpi b{display:block;font-size:13pt}.kpi span{font-size:7.5pt;color:var(--mut)}
 .tagr{background:var(--lowbg);color:var(--lowfg);padding:0 1.5mm;font-weight:700;white-space:nowrap}.tagb{background:var(--okbg);color:var(--okfg);padding:0 1.5mm;font-weight:700;white-space:nowrap}.tagg{background:#e1ece6;color:#2c5f46;padding:0 1.5mm;font-weight:700;white-space:nowrap}.nw{white-space:nowrap}
 @page dash{size:A4 landscape;margin:0}@page flow{size:A4 landscape;margin:8mm 8mm 12mm}.pg.dash{page:dash}.pg.flow{page:flow}
-@media print{.modal,template{display:none!important}.so{display:none}.it{cursor:auto}body{background:#fff}.pg{width:297mm;min-height:210mm;margin:0;box-shadow:none;break-after:page}.pg:last-child{break-after:auto}.pg.dash{height:210mm}.pg.flow{width:auto;min-height:0;padding:0}}
+@media print{.modal,template{display:none!important}.so,.pdfb{display:none}.nopdf{display:none!important}.it{cursor:auto}body{background:#fff}.pg{width:297mm;min-height:210mm;margin:0;box-shadow:none;break-after:page}.pg:last-child{break-after:auto}.pg.dash{height:210mm}.pg.flow{width:auto;min-height:0;padding:0}}
 `;
 const fontLink = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Sans:wght@400;500;700&display=swap">';
-const wrap = (title, pagesArr, extra = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${title}</title>${fontLink}<style>${css}</style></head><body>${pagesArr.join('\n')}${extra}</body></html>`;
+const pdfBtn = `<button type="button" class="pdfb" onclick="window.print()" title="인쇄 창에서 PDF로 저장을 선택하세요">PDF로 저장</button><script>${readFileSync(join(ROOT, '..', 'scripts', 'report_fit.js'), 'utf8')}</script>`;
+const wrap = (title, pagesArr, extra = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${title}</title>${fontLink}<style>${css}</style></head><body>${pagesArr.join('\n')}${extra}${pdfBtn}</body></html>`;
 const outDir = join(ROOT, 'reports', SEASON); mkdirSync(outDir, { recursive: true });
 const outMain = HUBPUB ? join(HUB, 'etc-reports', `${SEASON}_store_survey_report.html`) : join(outDir, `취합리포트_${today}.html`), outApp = join(outDir, `취합리포트_부록_${today}.html`);
 writeFileSync(outMain, wrap(`${SEASON} 매장 반응도 조사 취합 리포트`, mainPages, modalHtml));
