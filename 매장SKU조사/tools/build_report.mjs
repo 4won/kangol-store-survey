@@ -42,7 +42,12 @@ async function tab(name) {
   return rows.filter(r => r.some(Boolean)).map(r => Object.fromEntries(h.map((k, i) => [k, r[i] ?? ''])));
 }
 const latest = rows => rows.filter(r => r['최신'] === 'Y');
-const [R, RM, AD] = [await tab('응답'), await tab('제거요청'), await tab('추가요청')].map(latest);
+const [RALL, RMALL, ADALL] = [await tab('응답'), await tab('제거요청'), await tab('추가요청')];
+const [R, RM, AD] = [RALL, RMALL, ADALL].map(latest);
+// 기준선(이전에 엑셀로 받아 처리한 응답): tools/baseline.json — 기준선 매장이 아니거나 기준일 이후 제출이면 '신규'
+const BASE = existsSync(join(ROOT, 'tools/baseline.json')) ? JSON.parse(readFileSync(join(ROOT, 'tools/baseline.json'), 'utf8')) : null;
+const baseSet = new Set(BASE ? BASE.stores : []);
+const isNew = r => !!BASE && (!baseSet.has(r['매장명']) || String(r['제출일시']).replace(/D/g, '') > BASE.date);
 const stores = JSON.parse(readFileSync(join(ROOT, SEASON, 'data/stores.json'), 'utf8'));
 const prods = JSON.parse(readFileSync(join(ROOT, SEASON, 'data/products.json'), 'utf8')).items;
 const byNo = Object.fromEntries(prods.map(p => [p.no, p]));
@@ -92,22 +97,26 @@ const catColor = { '의류': C.cloth, '가방': C.bag, '모자': C.hat };
 /* ---------- 요청 품번 집계 ---------- */
 function tally(list) {
   const m = new Map();
-  for (const r of list) { const no = r['품번']; if (!no) continue; if (!m.has(no)) m.set(no, { no, name: r['상품명'], cat: r['복종'], stores: new Map() }); m.get(no).stores.set(r['매장명'], chOf(r)); }
+  for (const r of list) { const no = r['품번']; if (!no) continue; if (!m.has(no)) m.set(no, { no, name: r['상품명'], cat: r['복종'], stores: new Map(), nw: new Set() }); m.get(no).stores.set(r['매장명'], chOf(r)); if (isNew(r)) m.get(no).nw.add(r['매장명']); }
   return [...m.values()].map(x => ({ ...x, n: x.stores.size })).sort((a, b) => b.n - a.n || a.no.localeCompare(b.no));
 }
 const rem = tally(RM), add = tally(AD);
 const remBy = Object.fromEntries(rem.map(x => [x.no, x])), addBy = Object.fromEntries(add.map(x => [x.no, x]));
 let XLSX_B64 = '';
 const XNAME = `매장SKU조사_제거추가리스트_${new Date().toISOString().slice(0, 10)}.xlsx`;
+let XLSX_B64N = '', NEWN = 0;
+const XNAMEN = `매장SKU조사_제거추가리스트_신규분(${BASE ? BASE.label.replace(/\D/g, '') : ''}이후)_${new Date().toISOString().slice(0, 10)}.xlsx`;
 try {
-  const X = createRequire(join(HUB, 'tools/'))('xlsx'), wb = X.utils.book_new();
+  const X = createRequire(join(HUB, 'tools/'))('xlsx');
+  const makeWb = (rem, add, addBy, onlyNew) => {
+  const wb = X.utils.book_new();
   const sheetOf = list => {
     const orderStores = m => [...m.entries()].sort((u, v) => CHANNELS.indexOf(u[1]) - CHANNELS.indexOf(v[1]) || u[0].localeCompare(v[0], 'ko')).map(e => e[0]);
     const maxN = Math.max(1, ...list.map(x => x.n));
-    const head = ['복종', '세부복종', '품번', '상품명', '판매가', '요청 매장 수', '입고', '판매', '판매율', '요청 매장(전체)', ...Array.from({ length: maxN }, (_, i) => `매장${i + 1}`)];
-    const body = list.slice().sort((a, b) => CATS.indexOf(a.cat) - CATS.indexOf(b.cat) || b.n - a.n || a.no.localeCompare(b.no)).map(x => { const st = orderStores(x.stores), p = byNo[x.no] || {}, sl = sales[x.no] || {}; return [x.cat, p.sub || '', x.no, x.name, p.price ?? '', x.n, sl.inbound ?? '', sl.sales ?? '', sl.rate != null ? Math.round(sl.rate * 1000) / 1000 : '', st.join(', '), ...st]; });
+    const head = ['복종', '세부복종', '품번', '상품명', '판매가', '요청 매장 수', '입고', '판매', '판매율', '요청 매장(전체)', ...(BASE && !onlyNew ? [`신규 요청 매장(${BASE.label} 이후)`] : []), ...Array.from({ length: maxN }, (_, i) => `매장${i + 1}`)];
+    const body = list.slice().sort((a, b) => CATS.indexOf(a.cat) - CATS.indexOf(b.cat) || b.n - a.n || a.no.localeCompare(b.no)).map(x => { const st = orderStores(x.stores), p = byNo[x.no] || {}, sl = sales[x.no] || {}; return [x.cat, p.sub || '', x.no, x.name, p.price ?? '', x.n, sl.inbound ?? '', sl.sales ?? '', sl.rate != null ? Math.round(sl.rate * 1000) / 1000 : '', st.join(', '), ...(BASE && !onlyNew ? [st.filter(n => x.nw.has(n)).join(', ')] : []), ...st]; });
     const ws = X.utils.aoa_to_sheet([head, ...body]);
-    ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 10 }, { wch: 34 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 40 }, ...Array.from({ length: maxN }, () => ({ wch: 16 }))];
+    ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 10 }, { wch: 34 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 40 }, ...(BASE && !onlyNew ? [{ wch: 28 }] : []), ...Array.from({ length: maxN }, () => ({ wch: 16 }))];
     for (let r = 1; r <= body.length; r++) { const pc = ws[X.utils.encode_cell({ r, c: 8 })]; if (pc && typeof pc.v === 'number') pc.z = '0.0%'; for (const c of [4, 6, 7]) { const q = ws[X.utils.encode_cell({ r, c })]; if (q && typeof q.v === 'number') q.z = '#,##0'; } }
     ws['!freeze'] = { xSplit: 4, ySplit: 1 }; ws['!views'] = [{ state: 'frozen', xSplit: 4, ySplit: 1 }];
     return ws;
@@ -137,10 +146,26 @@ try {
     X.utils.book_append_sheet(wb, ws, '제거·추가 겹침');
     console.log(`제거·추가 겹침: ${both.length}개 품번 · ${out.length}행`);
   }
-  XLSX_B64 = X.write(wb, { type: 'base64', bookType: 'xlsx' });
-  mkdirSync(join(ROOT, 'reports', SEASON), { recursive: true }); writeFileSync(join(ROOT, 'reports', SEASON, XNAME), Buffer.from(XLSX_B64, 'base64'));
+  return wb;
+  };
+  XLSX_B64 = X.write(makeWb(rem, add, addBy, false), { type: 'base64', bookType: 'xlsx' });
+  if (BASE) {
+    const RN = R.filter(isNew), remN = tally(RM.filter(isNew)), addN = tally(AD.filter(isNew));
+    NEWN = RN.length;
+    if (NEWN) {
+      const wbN = makeWb(remN, addN, Object.fromEntries(addN.map(x => [x.no, x])), true);
+      const cnt = (L, n) => L.filter(r => r['매장명'] === n).length;
+      const oldNames = new Set(RALL.filter(r => baseSet.has(r['매장명']) && String(r['제출일시']).replace(/D/g, '') <= BASE.date).map(r => r['매장명']));
+      const rows = RN.map(r => [r['매장명'], chOf(r), r['채널계열'], r['제출일시'], baseSet.has(r['매장명']) ? '재제출(기존 응답 수정)' : '신규 제출', cnt(RM, r['매장명']), cnt(AD, r['매장명'])]);
+      const wsI = X.utils.aoa_to_sheet([['매장명', '채널', '계열', '제출일', '구분', '제거 요청 수', '추가 요청 수'], ...rows]);
+      wsI['!cols'] = [{ wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 12 }, { wch: 12 }];
+      X.utils.book_append_sheet(wbN, wsI, '신규 응답 매장');
+      XLSX_B64N = X.write(wbN, { type: 'base64', bookType: 'xlsx' });
+    }
+  }
+  mkdirSync(join(ROOT, 'reports', SEASON), { recursive: true }); writeFileSync(join(ROOT, 'reports', SEASON, XNAME), Buffer.from(XLSX_B64, 'base64')); if (XLSX_B64N) writeFileSync(join(ROOT, 'reports', SEASON, XNAMEN), Buffer.from(XLSX_B64N, 'base64'));
 } catch (e) { console.log('엑셀 생성 건너뜀:', e.message); }
-const xbtn = XLSX_B64 ? '<button type="button" class="xl so" onclick="dlx()">엑셀 다운로드 (제거·추가 리스트)</button>' : '';
+const xbtn = (XLSX_B64 ? '<button type="button" class="xl so" onclick="dlx()">엑셀 다운로드 (제거·추가 리스트 · 전체)</button>' : '') + (XLSX_B64N ? `<button type="button" class="xl so" onclick="dlx(1)">엑셀 다운로드 (${BASE.label} 이후 신규분 ${NEWN}곳만)</button>` : '');
 
 /* ---------- 키워드(주제) 규칙 ---------- */
 const THEMES = {
@@ -366,7 +391,7 @@ td.im{width:10mm;padding:.5mm}td.im img{display:block;width:8mm;height:9mm;objec
 @media print{.modal,template{display:none!important}.kp[data-gp],.sr2[data-gp],.stk i[data-gp]{cursor:auto}.so,.xl,.pdfb{display:none}.nopdf{display:none!important}.rq,.sth,.sall,.kw{cursor:auto}body{background:#fff}.pg{width:297mm;min-height:210mm;margin:0;box-shadow:none;break-after:page}.pg:last-child{break-after:auto}.pg.dash{height:210mm}.pg.flow{width:auto;min-height:0;padding:0}}
 `;
 const fontLink = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Sans:wght@400;500;700&display=swap">';
-const modalHtml = `<div class="modal" id="modal" hidden><div class="mp"><button class="mx" type="button" aria-label="닫기">×</button><div id="mbody"></div></div></div>${tpl.join('')}<script>(function(){var m=document.getElementById('modal'),b=document.getElementById('mbody');function close(){m.hidden=true;document.body.style.overflow=''}document.addEventListener('click',function(e){var it=e.target.closest('[data-no],[data-sop],[data-st],[data-gp]');if(it){var id=it.hasAttribute('data-no')?'d-'+it.getAttribute('data-no'):it.hasAttribute('data-st')?'t-'+it.getAttribute('data-st'):it.hasAttribute('data-gp')?'g-'+it.getAttribute('data-gp'):'s-'+it.getAttribute('data-sop');var t=document.getElementById(id);if(t){b.innerHTML=t.innerHTML;m.hidden=false;document.body.style.overflow='hidden';m.querySelector('.mp').scrollTop=0}return}if(e.target===m||e.target.closest('.mx'))close()});document.addEventListener('keydown',function(e){if(e.key==='Escape')close()})})();(function(){var t=document.getElementById('allp');if(!t)return;var tb=t.tBodies[0],rows=Array.prototype.slice.call(tb.rows),st={c:null,d:0};function val(r,c){var v=r.cells[c].getAttribute('data-v');return v===null?'':v}function sort(c){st.d=st.c===c?(st.d+1)%3:1;st.c=c;var hs=t.querySelectorAll('th[data-c]');Array.prototype.forEach.call(hs,function(h){h.classList.remove('asc','desc')});var h=t.querySelector('th[data-c="'+c+'"]');var list=rows.slice();if(st.d===0){list.sort(function(a,b){return a.getAttribute('data-i')-b.getAttribute('data-i')});st.c=null}else{h.classList.add(st.d===1?'asc':'desc');var dir=st.d===1?1:-1;list.sort(function(a,b){var x=val(a,c),y=val(b,c);if(x===''&&y==='')return 0;if(x==='')return 1;if(y==='')return -1;var nx=Number(x),ny=Number(y),r=(!isNaN(nx)&&!isNaN(ny))?nx-ny:String(x).localeCompare(String(y),'ko');return r*dir||a.getAttribute('data-i')-b.getAttribute('data-i')})}list.forEach(function(r){tb.appendChild(r)})}t.tHead.addEventListener('click',function(e){var h=e.target.closest('th[data-c]');if(h)sort(Number(h.getAttribute('data-c')))});var ck=document.querySelectorAll('.chk'),sum=document.getElementById('chsum');function filt(){var on=[];Array.prototype.forEach.call(ck,function(x){if(x.checked)on.push(x.value)});rows.forEach(function(r){r.style.display=(!on.length||on.indexOf(r.getAttribute('data-ch'))>=0)?'':'none'});sum.textContent=on.length?on.map(function(v){return v==='쇼핑몰'?'복합쇼핑몰':v}).join(', '):'전체'}Array.prototype.forEach.call(ck,function(x){x.addEventListener('change',filt)});document.addEventListener('click',function(e){var d=document.querySelector('.chf');if(d&&d.open&&!e.target.closest('.chf'))d.open=false})})();window.dlx=function(){var b=atob(window.__X),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);var u=URL.createObjectURL(new Blob([a],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),l=document.createElement('a');l.href=u;l.download=window.__XN;document.body.appendChild(l);l.click();l.remove();setTimeout(function(){URL.revokeObjectURL(u)},3000)};<\/script>${XLSX_B64 ? `<script>window.__X='${XLSX_B64}';window.__XN='${XNAME}';<\/script>` : ''}`;
+const modalHtml = `<div class="modal" id="modal" hidden><div class="mp"><button class="mx" type="button" aria-label="닫기">×</button><div id="mbody"></div></div></div>${tpl.join('')}<script>(function(){var m=document.getElementById('modal'),b=document.getElementById('mbody');function close(){m.hidden=true;document.body.style.overflow=''}document.addEventListener('click',function(e){var it=e.target.closest('[data-no],[data-sop],[data-st],[data-gp]');if(it){var id=it.hasAttribute('data-no')?'d-'+it.getAttribute('data-no'):it.hasAttribute('data-st')?'t-'+it.getAttribute('data-st'):it.hasAttribute('data-gp')?'g-'+it.getAttribute('data-gp'):'s-'+it.getAttribute('data-sop');var t=document.getElementById(id);if(t){b.innerHTML=t.innerHTML;m.hidden=false;document.body.style.overflow='hidden';m.querySelector('.mp').scrollTop=0}return}if(e.target===m||e.target.closest('.mx'))close()});document.addEventListener('keydown',function(e){if(e.key==='Escape')close()})})();(function(){var t=document.getElementById('allp');if(!t)return;var tb=t.tBodies[0],rows=Array.prototype.slice.call(tb.rows),st={c:null,d:0};function val(r,c){var v=r.cells[c].getAttribute('data-v');return v===null?'':v}function sort(c){st.d=st.c===c?(st.d+1)%3:1;st.c=c;var hs=t.querySelectorAll('th[data-c]');Array.prototype.forEach.call(hs,function(h){h.classList.remove('asc','desc')});var h=t.querySelector('th[data-c="'+c+'"]');var list=rows.slice();if(st.d===0){list.sort(function(a,b){return a.getAttribute('data-i')-b.getAttribute('data-i')});st.c=null}else{h.classList.add(st.d===1?'asc':'desc');var dir=st.d===1?1:-1;list.sort(function(a,b){var x=val(a,c),y=val(b,c);if(x===''&&y==='')return 0;if(x==='')return 1;if(y==='')return -1;var nx=Number(x),ny=Number(y),r=(!isNaN(nx)&&!isNaN(ny))?nx-ny:String(x).localeCompare(String(y),'ko');return r*dir||a.getAttribute('data-i')-b.getAttribute('data-i')})}list.forEach(function(r){tb.appendChild(r)})}t.tHead.addEventListener('click',function(e){var h=e.target.closest('th[data-c]');if(h)sort(Number(h.getAttribute('data-c')))});var ck=document.querySelectorAll('.chk'),sum=document.getElementById('chsum');function filt(){var on=[];Array.prototype.forEach.call(ck,function(x){if(x.checked)on.push(x.value)});rows.forEach(function(r){r.style.display=(!on.length||on.indexOf(r.getAttribute('data-ch'))>=0)?'':'none'});sum.textContent=on.length?on.map(function(v){return v==='쇼핑몰'?'복합쇼핑몰':v}).join(', '):'전체'}Array.prototype.forEach.call(ck,function(x){x.addEventListener('change',filt)});document.addEventListener('click',function(e){var d=document.querySelector('.chf');if(d&&d.open&&!e.target.closest('.chf'))d.open=false})})();window.dlx=function(k){var b=atob(k?window.__X2:window.__X),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);var u=URL.createObjectURL(new Blob([a],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),l=document.createElement('a');l.href=u;l.download=k?window.__XN2:window.__XN;document.body.appendChild(l);l.click();l.remove();setTimeout(function(){URL.revokeObjectURL(u)},3000)};<\/script>${XLSX_B64 ? `<script>window.__X='${XLSX_B64}';window.__XN='${XNAME}';${XLSX_B64N ? `window.__X2='${XLSX_B64N}';window.__XN2='${XNAMEN}';` : ''}<\/script>` : ''}`;
 const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${SEASON} 매장 SKU 조사 리포트</title>${fontLink}<style>${css}</style></head><body>${pages.join('\n')}<button type="button" class="pdfb" onclick="window.print()" title="인쇄 창에서 대상을 'PDF로 저장'으로 선택하세요">PDF로 저장</button><script>${readFileSync(join(ROOT, '..', 'scripts', 'report_fit.js'), 'utf8')}</script>${modalHtml}</body></html>`;
 
 const outDir = join(ROOT, 'reports', SEASON); mkdirSync(outDir, { recursive: true });

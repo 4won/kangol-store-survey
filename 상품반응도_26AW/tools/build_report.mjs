@@ -367,8 +367,9 @@ function scatter(qd, w = 330, h = 190) {
   return `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img">${g}</svg>`;
 }
 const kpi = (v, l, s = '', c = '') => `<div class="kp"><small>${l}</small><b class="${c}">${v}</b>${s ? `<em>${s}</em>` : ''}</div>`;
-const mast = (eyebrow, title, meta) => `<div class="mast"><div><span>${eyebrow}</span><h1>${title}</h1></div><div class="meta">${meta}</div></div>`;
-const dash = (inner, cls = '') => mainPages.push(`<section class="pg dash ${cls}">${inner}</section>`);
+const mast = (eyebrow, title, meta) => `<div class="mast"><div><span>${eyebrow}</span><h1>${title}</h1></div><div class="meta">${meta}</div></div><!--ONEL-->`;
+let dashN = 0;
+const dash = (inner, cls = '') => { const t = (SUM.pageLine || [])[dashN++]; mainPages.push(`<section class="pg dash ${cls}">${inner.replace('<!--ONEL-->', t ? `<div class="onel"><b>한줄요약</b><span>${esc(t)}</span></div>` : '')}</section>`); };
 
 // ---- P1 요약
 {
@@ -637,6 +638,7 @@ em.hl,em.hw,em.ho,em.hh,em.h0{font-style:normal;padding:0 1mm;border-radius:.8mm
 .kws{display:flex;flex-wrap:wrap;gap:.8mm 1mm;margin-top:.4mm}.kw{font-size:6.6pt;padding:.1mm 1.4mm;border-radius:2mm;white-space:nowrap;background:#eef1f6;color:#3b475c}.kw.pos{background:#e1ece6;color:#2c5f46}.kw.neg{background:#f2dcd9;color:#8a2a22}.kw.neu{background:#eef1f6;color:#3b475c}.kw.st{background:#f1f3f7;color:#7b8190;border:.4pt solid #d4d8e0}
 .pg.dash>*{zoom:var(--z,1)}
 .pg.dash.meas{height:auto!important;overflow:visible!important}.pg.dash.meas>*{flex:none!important;height:auto!important;min-height:0!important;zoom:1!important}.pg.dash.meas *{min-height:0}.pg.dash.meas .g6,.pg.dash.meas .g2,.pg.dash.meas .g3,.pg.dash.meas .g3c,.pg.dash.meas .g4,.pg.dash.meas .gc,.pg.dash.meas .prw{grid-template-rows:none!important}.pg.dash.meas .bx,.pg.dash.meas .qb,.pg.dash.meas .sbx,.pg.dash.meas .prs{overflow:visible!important}
+.onel{display:flex;align-items:baseline;gap:3mm;background:#f6f1de;border-left:1.2mm solid var(--gold);border-radius:1.4mm;padding:2.2mm 4mm;font-size:9pt;line-height:1.45;color:#2a3140}.onel b{flex:none;font-size:7.6pt;letter-spacing:.06em;color:#7a6a2c}
 .pdfb{position:fixed;top:12px;right:16px;z-index:40;font:inherit;font-size:13px;font-weight:700;border:0;background:#16283F;color:#fff;border-radius:8px;padding:8px 16px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3)}.pdfb:hover{background:#1F3A5C}
 .it{cursor:pointer}.it:hover{background:#f7f8fb}.so{display:inline}
 .modal{position:fixed;inset:0;background:rgba(15,25,40,.55);display:grid;place-items:center;z-index:50;padding:16px}.modal[hidden]{display:none}
