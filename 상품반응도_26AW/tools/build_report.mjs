@@ -657,6 +657,7 @@ em.hl,em.hw,em.ho,em.hh,em.h0{font-style:normal;padding:0 1mm;border-radius:.8mm
 .dcm{margin:0;padding:0;list-style:none;font-size:12px}.dcm li{padding:4px 0;border-top:1px solid #f0f1f4}.dcm b{color:var(--navy2);margin-right:6px}
 @media (max-width:760px){.dd .dh,.dgrid{grid-template-columns:1fr}.dcards{grid-template-columns:1fr 1fr}}
 .cp[data-brand],.kw[data-brand],.kw[data-bl],table.allp tr[data-no],table.gl tr[data-brand]{cursor:pointer}table.gl tr[data-brand]:hover td{background:#f7f8fb}table.gl td,table.gl th{font-size:12px}.cp[data-brand]:hover,table.allp tr[data-no]:hover td{background:#f7f8fb}.kw[data-brand]:hover{background:#dfe6ef}
+.psw>.psc{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center}
 .rest{margin-top:2mm;border-top:.5pt solid #f0f1f4;padding-top:1.6mm}.rest small{font-size:7.2pt;color:var(--mut)}.rest .kw{font-size:7.2pt;padding:.3mm 1.8mm}
 .lsearch{display:block;margin-bottom:2mm}.lsearch input[type=search]{width:100%;max-width:70mm;font:inherit;font-size:9pt;padding:1.4mm 2.4mm;border:.5pt solid var(--line);border-radius:1.4mm}
 table.allp th[data-sort]{cursor:pointer;user-select:none}table.allp th[data-sort]:hover{background:#dfe6ef}table.allp .si{font-size:7pt;color:var(--navy)}.lsearch label{margin:0 3mm;font-size:8.5pt;white-space:nowrap}.lsearch button{font:inherit;font-size:8.5pt;padding:1.2mm 3mm;border:.5pt solid var(--line);background:#fff;border-radius:1.4mm;cursor:pointer;margin-right:3mm}.lsearch .mut{font-size:8pt}
